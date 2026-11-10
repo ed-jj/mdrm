@@ -74,7 +74,7 @@
         'GROUPING':     { display: 'Grouping',      placeholder: 'Grouping' },
         'RELEASETYPE':  { display: 'Release Type',  placeholder: 'Release type' },
         'CUSTOM1':      { display: 'Custom 1',      placeholder: 'Custom 1' },
-        'RELEASECOUNTRY': { display: 'Release Country', placeholder: 'Enter release country' }
+        'COUNTRY':      { display: 'Country',       placeholder: 'Enter country' }
     };
 
     // Layout of the top section of the panel, row by row.
@@ -92,7 +92,7 @@
         ['DISCSUBTITLE'],
         { cells: ['LABEL', 'CUSTOM2'], wideFirst: true },
         ['GROUPING', 'RELEASETYPE', 'CUSTOM1'],
-        ['RELEASECOUNTRY']
+        ['COUNTRY']
     ];
 
     // Original (saved) values of the panel fields for the current file
@@ -860,7 +860,7 @@
         },
         
         /**
-         * Render a full-width panel field (e.g. RATING, DISCSUBTITLE, RELEASECOUNTRY)
+         * Render a full-width panel field (e.g. RATING, DISCSUBTITLE, COUNTRY)
          */
         renderPanelField(container, name, info, value) {
             const fieldHtml = `
