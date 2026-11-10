@@ -610,20 +610,23 @@
                 'filename-save',
                 'filename-reset',
                 'filename-cancel',
+                '.replaygain-btn',
                 '.upload-btn',
                 '.save-image-btn',
                 '.apply-folder-btn',
                 '.delete-art-btn',
-                'title',
-                'artist', 
-                'album',
-                'albumartist',
-                'composer',
-                'genre',
-                'track',
-                'disc',
-                'date'
+                '.delete-art-folder-btn'
             ];
+            
+            // Fields in the top section (standard + panel fields), in on-screen order
+            const standardFieldsContainer = document.getElementById('standard-fields-container');
+            if (standardFieldsContainer) {
+                standardFieldsContainer.querySelectorAll('input[type="text"], button.oversized-field-button').forEach(field => {
+                    if (field.id) {
+                        navigableElements.push('#' + field.id);
+                    }
+                });
+            }
             
             // Add extended fields toggle button
             navigableElements.push('.extended-fields-toggle');
@@ -683,86 +686,37 @@
                 });
             });
             
-            // Add visible apply buttons for standard fields
-            const standardFieldIds = ['title', 'artist', 'album', 'albumartist', 'composer', 'genre'];
-            for (let i = standardFieldIds.length - 1; i >= 0; i--) {
-                const fieldId = standardFieldIds[i];
-                const fieldIndex = focusableElements.findIndex(el => el.id === fieldId);
+            // Add visible File/Folder apply buttons after each top-section field that has changed.
+            // Covers full-width fields (controls next to the field) and the multi-column rows
+            // (Track/Disc/Year and the panel rows, whose controls appear underneath the row)
+            const topSectionInputs = standardFieldsContainer ?
+                Array.from(standardFieldsContainer.querySelectorAll('input[type="text"]')) : [];
+            for (let i = topSectionInputs.length - 1; i >= 0; i--) {
+                const input = topSectionInputs[i];
+                const fieldIndex = focusableElements.indexOf(input);
+                if (fieldIndex === -1 || !input.dataset.field) continue;
                 
-                if (fieldIndex !== -1) {
-                    const applyControls = document.querySelector(`.apply-field-controls[data-field="${fieldId}"].visible`);
-                    if (applyControls) {
-                        const fileBtn = applyControls.querySelector('.apply-file-btn');
-                        const folderBtn = applyControls.querySelector('.apply-folder-btn-new');
-                        const buttonsToInsert = [];
-                        
-                        if (fileBtn && !fileBtn.disabled) {
-                            buttonsToInsert.push(fileBtn);
-                        }
-                        if (folderBtn && !folderBtn.disabled) {
-                            buttonsToInsert.push(folderBtn);
-                        }
-                        
-                        // Insert buttons after the field
-                        buttonsToInsert.forEach((btn, idx) => {
-                            focusableElements.splice(fieldIndex + 1 + idx, 0, btn);
-                        });
-                    }
-                }
-            }
-            
-            // Add dynamically visible File/Folder buttons for Track #, Disc #, and Year fields
-            // These buttons appear when the user modifies these fields, allowing them to apply
-            // changes to either the current file or all files in the folder
-            const groupedApplyItems = metadataSection.querySelectorAll('.grouped-apply-item');
-            
-            const visibleGroupedItems = Array.from(groupedApplyItems).filter(item => {
-                return item.style.display !== 'none';
-            });
-            
-            // Build a map of field -> buttons for proper insertion order
-            const fieldButtonMap = new Map();
-            
-            visibleGroupedItems.forEach(item => {
-                const fieldName = item.dataset.field;
-                const applyControls = item.querySelector('.apply-field-controls');
-                if (applyControls) {
-                    const fileBtn = applyControls.querySelector('.apply-file-btn');
-                    const folderBtn = applyControls.querySelector('.apply-folder-btn-new');
-                    
-                    if (fileBtn || folderBtn) {
-                        fieldButtonMap.set(fieldName, { fileBtn, folderBtn });
-                    }
-                    
-                }
-            });
-            
-            // Insert buttons in the correct positions after Track, Disc, and Date fields
-            // This ensures proper keyboard navigation order
-            const groupedFields = ['track', 'disc', 'date'];
-            
-            // Process in reverse order to maintain correct indices when inserting
-            for (let i = groupedFields.length - 1; i >= 0; i--) {
-                const fieldId = groupedFields[i];
-                const fieldIndex = focusableElements.findIndex(el => el.id === fieldId);
+                const applyControls = metadataSection.querySelector(`.apply-field-controls[data-field="${input.dataset.field}"]`);
+                if (!applyControls) continue;
                 
-                if (fieldIndex !== -1 && fieldButtonMap.has(fieldId)) {
-                    const { fileBtn, folderBtn } = fieldButtonMap.get(fieldId);
-                    const buttonsToInsert = [];
-                    
-                    if (fileBtn && !fileBtn.disabled) {
-                        buttonsToInsert.push(fileBtn);
-                    }
-                    if (folderBtn && !folderBtn.disabled) {
-                        buttonsToInsert.push(folderBtn);
-                    }
-                    
-                    
-                    // Insert buttons after the field
-                    buttonsToInsert.forEach((btn, idx) => {
-                        focusableElements.splice(fieldIndex + 1 + idx, 0, btn);
-                    });
+                const groupedItem = applyControls.closest('.grouped-apply-item');
+                const isShown = groupedItem ?
+                    groupedItem.style.display !== 'none' :
+                    applyControls.classList.contains('visible');
+                if (!isShown) continue;
+                
+                const buttonsToInsert = [];
+                const fileBtn = applyControls.querySelector('.apply-file-btn');
+                const folderBtn = applyControls.querySelector('.apply-folder-btn-new');
+                if (fileBtn && !fileBtn.disabled && fileBtn.offsetParent !== null) {
+                    buttonsToInsert.push(fileBtn);
                 }
+                if (folderBtn && !folderBtn.disabled && folderBtn.offsetParent !== null) {
+                    buttonsToInsert.push(folderBtn);
+                }
+                buttonsToInsert.forEach((btn, idx) => {
+                    focusableElements.splice(fieldIndex + 1 + idx, 0, btn);
+                });
             }
             
             // Add visible apply buttons for dynamic fields

@@ -182,5 +182,28 @@ window.MetadataRemote.API = {
                 field_value: fieldValue
             })
         });
+    },
+
+    // Delete embedded album art from all files in a folder (not subfolders)
+    async deleteArtFromFolder(folderPath) {
+        return this.call('/delete-art-from-folder', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ folderPath: folderPath })
+        });
+    },
+
+    // Start ReplayGain calculation for a folder (treated as one album)
+    async startReplayGain(folderPath) {
+        return this.call('/replaygain', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ folderPath: folderPath })
+        });
+    },
+
+    // Get ReplayGain job progress / result
+    async getReplayGainStatus(jobId) {
+        return this.call(`/replaygain/${encodeURIComponent(jobId)}`);
     }
 };

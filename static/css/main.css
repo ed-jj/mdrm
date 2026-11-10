@@ -4014,3 +4014,98 @@ button:focus:not(:active):not(.processing):not(.success):not(.error):not(.warnin
 .buttons {
     margin-top: 1rem;
 }
+
+/* =========================================================
+   Panel fields, folder art delete and ReplayGain additions
+   ========================================================= */
+
+/* Two-thirds / one-third row (LABEL / CUSTOM2), aligned with the 3-column rows */
+.form-group-three-column.panel-row-wide-first .form-group-wrapper:first-child {
+    flex: 0 0 calc((100% - 2rem) * 2 / 3 + 1rem);
+}
+
+/* Fields in the multi-column rows sit a bit closer together */
+.form-group-three-column.panel-row {
+    margin-bottom: 0.25rem;
+}
+
+/* Folder tools bar at the top of the metadata panel */
+.panel-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin: 0.25rem 0 0.25rem;
+}
+
+.replaygain-btn {
+    padding: 0.4rem 0.8rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #3a4a6a 0%, #4a5a7a 100%);
+    color: white;
+    white-space: nowrap;
+}
+
+.replaygain-btn:hover:not(:disabled):not(.processing):not(.success):not(.error):not(.warning) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(58, 74, 106, 0.4);
+}
+
+.replaygain-btn:disabled {
+    cursor: wait;
+}
+
+.replaygain-status {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.replaygain-status.success { color: var(--success); }
+.replaygain-status.warning { color: var(--warning); }
+.replaygain-status.error { color: var(--error); }
+
+/* Delete artwork from all files in the folder */
+.delete-art-folder-btn {
+    background: linear-gradient(135deg, #4a2424 0%, #6a3030 100%);
+    color: white;
+}
+
+.delete-art-folder-btn:hover:not(.processing):not(.success):not(.error):not(.warning) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(90, 45, 45, 0.4);
+}
+
+/* "Click again to confirm" state for the folder-wide buttons */
+.delete-art-folder-btn.confirming,
+.replaygain-btn.confirming {
+    background: linear-gradient(135deg, #a33a3a 0%, #c04545 100%);
+    color: white;
+}
+
+:root[data-theme="light"] .replaygain-btn {
+    background: linear-gradient(135deg, #8b7d6b 0%, #7b6d5b 100%);
+    color: white;
+}
+
+:root[data-theme="light"] .replaygain-btn:hover:not(:disabled):not(.processing):not(.success):not(.error):not(.warning) {
+    background: linear-gradient(135deg, #7b6d5b 0%, #6b5d4b 100%);
+    box-shadow: 0 4px 12px rgba(139, 125, 107, 0.4);
+}
+
+:root[data-theme="light"] .delete-art-folder-btn {
+    background: linear-gradient(135deg, #b84040 0%, #a83030 100%);
+    color: white;
+}
+
+:root[data-theme="light"] .delete-art-folder-btn.confirming,
+:root[data-theme="light"] .replaygain-btn.confirming {
+    background: linear-gradient(135deg, #e05050 0%, #d04040 100%);
+}
