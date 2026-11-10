@@ -185,6 +185,69 @@
         },
 
         /**
+         * Delete embedded album art from every file in the current folder (not subfolders).
+         * First click arms the button, second click (within 4 s) confirms.
+         */
+        async deleteArtFromFolder() {
+            if (!State.currentFile) return;
+
+            const button = document.querySelector('.delete-art-folder-btn');
+            if (!button || button.disabled) return;
+            const label = button.querySelector('.btn-status-content');
+
+            if (!button.classList.contains('confirming')) {
+                button.classList.add('confirming');
+                if (label) label.textContent = 'Click again to confirm';
+                button._confirmTimeout = setTimeout(() => {
+                    button.classList.remove('confirming');
+                    if (label) label.textContent = 'Delete art (folder)';
+                }, 4000);
+                return;
+            }
+
+            clearTimeout(button._confirmTimeout);
+            button.classList.remove('confirming');
+            if (label) label.textContent = 'Delete art (folder)';
+
+            const folderPath = State.currentFile.substring(0, State.currentFile.lastIndexOf('/'));
+
+            button.disabled = true;
+            setFormEnabledCallback(false);
+            ButtonStatus.showButtonStatus(button, 'Deleting...', 'processing');
+
+            try {
+                const result = await API.deleteArtFromFolder(folderPath);
+
+                if (result.status === 'success' || result.status === 'partial') {
+                    // The current file is in this folder, so its art is gone too
+                    State.pendingAlbumArt = null;
+                    State.currentAlbumArt = null;
+                    const artDisplay = document.getElementById('art-display');
+                    artDisplay.innerHTML = '<div class="album-art-placeholder">No album art</div>';
+                    document.querySelector('.delete-art-btn').style.display = 'none';
+                    document.querySelector('.save-image-btn').style.display = 'none';
+                    document.querySelector('.apply-folder-btn').style.display = 'none';
+
+                    const message = `Deleted from ${result.filesUpdated} file${result.filesUpdated === 1 ? '' : 's'}`;
+                    ButtonStatus.showButtonStatus(button, message, result.status === 'partial' ? 'warning' : 'success', 3000);
+                    if (result.errors && result.errors.length) {
+                        console.error('Album art delete errors:', result.errors);
+                        showStatusCallback(`Album art could not be deleted from ${result.errors.length} file(s)`, 'warning');
+                    }
+                    loadHistoryCallback();
+                } else {
+                    ButtonStatus.showButtonStatus(button, result.error || 'Error', 'error');
+                }
+            } catch (err) {
+                console.error('Error deleting album art from folder:', err);
+                ButtonStatus.showButtonStatus(button, err.message || 'Error', 'error');
+            }
+
+            button.disabled = false;
+            setFormEnabledCallback(true);
+        },
+
+        /**
          * Save album art to current file
          */
         async saveAlbumArt() {

@@ -55,6 +55,66 @@
         'disc': { display: 'Disc #', placeholder: 'Enter CD number', group: 'numbers' },
         'date': { display: 'Year', placeholder: 'Enter year', group: 'numbers' }
     };
+
+    // Standard fields that are always shown (even when the file doesn't have them yet).
+    // Composer keeps the original behaviour of only being shown when present.
+    const alwaysShownStandardFields = ['title', 'artist', 'album', 'albumartist', 'genre', 'track', 'disc', 'date'];
+
+    // Permanent panel fields. These are written exactly like user-created custom
+    // fields (single file: /metadata/create-field, folder: /apply-field-to-folder),
+    // using the tag name as the field name.
+    const panelFieldsInfo = {
+        'RATING':       { display: 'Rating',        placeholder: 'Enter rating' },
+        'TRACKTOTAL':   { display: 'Track Total',   placeholder: 'Total tracks' },
+        'DISCTOTAL':    { display: 'Disc Total',    placeholder: 'Total discs' },
+        'ORIGINALYEAR': { display: 'Original Year', placeholder: 'Original year' },
+        'DISCSUBTITLE': { display: 'Disc Subtitle', placeholder: 'Enter disc subtitle' },
+        'LABEL':        { display: 'Label',         placeholder: 'Enter label' },
+        'CUSTOM2':      { display: 'Custom 2',      placeholder: 'Custom 2' },
+        'GROUPING':     { display: 'Grouping',      placeholder: 'Grouping' },
+        'RELEASETYPE':  { display: 'Release Type',  placeholder: 'Release type' },
+        'CUSTOM1':      { display: 'Custom 1',      placeholder: 'Custom 1' },
+        'COUNTRY':      { display: 'Country',       placeholder: 'Enter country' }
+    };
+
+    // Layout of the top section of the panel, row by row.
+    // 'numbers' is the existing Track # / Disc # / Year row.
+    const panelLayout = [
+        ['title'],
+        ['RATING'],
+        ['artist'],
+        ['album'],
+        ['albumartist'],
+        ['composer'],
+        ['genre'],
+        'numbers',
+        ['TRACKTOTAL', 'DISCTOTAL', 'ORIGINALYEAR'],
+        ['DISCSUBTITLE'],
+        { cells: ['LABEL', 'CUSTOM2'], wideFirst: true },
+        ['GROUPING', 'RELEASETYPE', 'CUSTOM1'],
+        ['COUNTRY']
+    ];
+
+    // Original (saved) values of the panel fields for the current file
+    let panelOriginals = {};
+
+    function isPanelField(fieldId) {
+        return Object.prototype.hasOwnProperty.call(panelFieldsInfo, fieldId);
+    }
+
+    // Fields shown in the multi-column rows (they get the inline-style delete confirmation)
+    function isGroupedFieldId(fieldId) {
+        if (['track', 'disc', 'date'].includes(fieldId)) return true;
+        if (isPanelField(fieldId)) {
+            const input = document.getElementById(`panel-${fieldId}`);
+            return !!(input && input.closest('.form-group-three-column'));
+        }
+        return false;
+    }
+
+    function clearConfirmationLayout() {
+        document.querySelectorAll('.has-confirmation-ui').forEach(el => el.classList.remove('has-confirmation-ui'));
+    }
     
     // HTML escape function to prevent XSS and display issues
     function escapeHtml(unsafe) {
@@ -131,6 +191,14 @@
         // Expose standard fields info
         standardFieldsInfo: standardFieldsInfo,
         
+        // Expose panel fields info
+        panelFieldsInfo: panelFieldsInfo,
+
+        // Check if a field is one of the permanent panel fields (RATING, LABEL, ...)
+        isPanelField(fieldId) {
+            return isPanelField(fieldId);
+        },
+
         // Check if a field is standard
         isStandardField(fieldId) {
             return standardFields.includes(fieldId);
@@ -248,6 +316,12 @@
                     item.style.display = 'none';
                 });
             }
+
+            // Hide apply controls of the panel field rows
+            document.querySelectorAll('.panel-apply-controls').forEach(block => {
+                block.classList.remove('visible');
+                block.style.display = 'none';
+            });
         },
 
         setupMetadataFieldListeners() {
@@ -270,11 +344,20 @@
             // Collect standard fields (only those that exist)
             standardFields.forEach(field => {
                 const input = document.getElementById(field);
-                if (input) {
+                if (input && !input.disabled) {
                     // Treat single space as empty to ensure consistency
-                    data[field] = input.value === ' ' ? '' : input.value;
+                    const value = input.value === ' ' ? '' : input.value;
+                    const original = State.originalMetadata[field] || '';
+                    // Fields are always shown now - don't create empty tags in files that lack them
+                    if (value === '' && (original === '' || original === ' ')) {
+                        return;
+                    }
+                    data[field] = value;
                 }
             });
+
+            // Changed panel fields (written via the custom field mechanism after the main save)
+            const panelChanges = this.getChangedPanelFields();
             
             // Collect dynamic fields
             dynamicFields.forEach((fieldInfo, fieldId) => {
@@ -308,8 +391,29 @@
             
             try {
                 const result = await API.setMetadata(State.currentFile, data);
-                
+
+                // Write changed panel fields using the custom field mechanism
+                let panelOk = true;
                 if (result.status === 'success') {
+                    for (const [name, value] of panelChanges) {
+                        try {
+                            const panelResult = await API.createField(State.currentFile, name, value);
+                            if (panelResult.status === 'success') {
+                                panelOriginals[name] = value;
+                            } else {
+                                panelOk = false;
+                            }
+                        } catch (panelErr) {
+                            console.error(`Error saving ${name}:`, panelErr);
+                            panelOk = false;
+                        }
+                    }
+                }
+
+                if (result.status === 'success' && !panelOk) {
+                    showButtonStatus(button, 'Some fields failed', 'error');
+                    loadHistoryCallback();
+                } else if (result.status === 'success') {
                     showButtonStatus(button, 'Saved!', 'success', 3000);
                     
                     Object.keys(data).forEach(key => {
@@ -615,6 +719,13 @@
                 return;
             }
             
+            // The Track/Disc/Year apply controls get moved next to their row while
+            // rendering - put them back before clearing so they aren't destroyed
+            const groupedControls = document.getElementById('grouped-apply-controls');
+            if (groupedControls && container.contains(groupedControls)) {
+                container.insertAdjacentElement('afterend', groupedControls);
+            }
+            
             // Clear existing standard fields
             container.innerHTML = '';
             
@@ -624,11 +735,16 @@
             // Check standard_fields property
             const standardFields = metadata.standard_fields || {};
             
-            // Group fields for special rendering
-            const numberFields = [];
-            const regularFields = [];
+            // Panel field values (RATING, LABEL, ...) as found in the file
+            const panelValues = metadata.panel_fields || {};
+            panelOriginals = {};
+            Object.keys(panelFieldsInfo).forEach(name => {
+                const raw = panelValues[name] ? (panelValues[name].value || '') : '';
+                panelOriginals[name] = raw === ' ' ? '' : raw;
+            });
             
-            // Render fields in the defined order, but only if they exist
+            // Work out which standard fields to show and with what value
+            const standardEntries = {};
             Object.entries(standardFieldsInfo).forEach(([field, info]) => {
                 // Override display names for M4B files
                 if (isM4B) {
@@ -649,30 +765,255 @@
                 
                 if (hasValue || this.shouldAlwaysShowField(field)) {
                     const fieldValue = standardFields[field] || existingFields[field] || '';
-                    
-                    if (info.group === 'numbers') {
-                        numberFields.push({ field, info, value: fieldValue });
-                    } else {
-                        regularFields.push({ field, info, value: fieldValue });
-                    }
+                    standardEntries[field] = { field, info, value: fieldValue };
                 }
             });
             
-            // Render regular fields
-            regularFields.forEach(({ field, info, value }) => {
-                this.renderStandardField(container, field, info, value);
+            // Render row by row
+            panelLayout.forEach((row, rowIndex) => {
+                if (row === 'numbers') {
+                    const numberFields = ['track', 'disc', 'date']
+                        .filter(f => standardEntries[f])
+                        .map(f => standardEntries[f]);
+                    if (numberFields.length > 0) {
+                        this.renderGroupedFields(container, numberFields);
+                        // Keep the Track/Disc/Year apply controls directly under their row
+                        if (groupedControls) {
+                            container.appendChild(groupedControls);
+                        }
+                    }
+                    return;
+                }
+                
+                const cells = Array.isArray(row) ? row : row.cells;
+                if (cells.length === 1) {
+                    const name = cells[0];
+                    if (isPanelField(name)) {
+                        this.renderPanelField(container, name, panelFieldsInfo[name], panelOriginals[name]);
+                    } else if (standardEntries[name]) {
+                        const { field, info, value } = standardEntries[name];
+                        this.renderStandardField(container, field, info, value);
+                    }
+                } else {
+                    this.renderPanelRow(container, cells, !!row.wideFirst, `panel-row-${rowIndex}`);
+                }
             });
-            
-            // Render grouped number fields if any exist
-            if (numberFields.length > 0) {
-                this.renderGroupedFields(container, numberFields);
-            }
         },
         
         shouldAlwaysShowField(field) {
-            // Optionally always show certain fields even if empty
-            // Only show fields that actually exist
-            return false;
+            // The main fields are always shown so they can be filled in directly
+            return alwaysShownStandardFields.includes(field);
+        },
+        
+        /**
+         * Build the File / Folder apply controls (with folder confirmation) for a panel field
+         * @param {string} name - Panel field name
+         * @param {boolean} withLabel - Include the "Apply to" label
+         */
+        panelApplyControlsHtml(name, withLabel) {
+            return `
+                <div class="apply-field-controls" data-field="${name}">
+                    ${withLabel ? '<span class="apply-field-label">Apply to</span>' : ''}
+                    <button type="button" class="apply-field-btn apply-file-btn btn-status" 
+                            data-field="${name}" onclick="window.MetadataRemote.Metadata.Editor.savePanelField('${name}', false)">
+                        <span class="btn-status-content">File</span>
+                        <span class="btn-status-message"></span>
+                    </button>
+                    <button type="button" class="apply-field-btn apply-folder-btn-new btn-status" 
+                            data-field="${name}" onclick="window.MetadataRemote.Metadata.Editor.showFolderConfirmation('${name}');">
+                        <span class="btn-status-content">Folder</span>
+                        <span class="btn-status-message"></span>
+                    </button>
+                    <div class="folder-confirmation" data-field="${name}" style="display: none;">
+                        <span class="confirm-text">Apply to folder?</span>
+                        <button type="button" class="confirm-yes" 
+                                onclick="window.MetadataRemote.Metadata.Editor.confirmFolderApply('${name}');">Yes</button>
+                        <button type="button" class="confirm-no" 
+                                onclick="window.MetadataRemote.Metadata.Editor.cancelFolderApply('${name}');">No</button>
+                    </div>
+                </div>
+            `;
+        },
+        
+        /**
+         * Label + input markup for a panel field
+         * @param {string} name - Panel field name
+         * @param {Object} info - Display info
+         * @param {string} value - Current value
+         */
+        panelFieldInnerHtml(name, info, value) {
+            return `
+                <div class="label-with-delete">
+                    <label for="panel-${name}" title="${name}">${info.display}</label>
+                    <button type="button" class="delete-field-btn" 
+                            onclick="window.MetadataRemote.Metadata.Editor.deleteField('${name}')" 
+                            title="Delete ${name} metadata">
+                        <span>⊖</span>
+                    </button>
+                </div>
+                <div class="input-wrapper">
+                    <input type="text" id="panel-${name}" placeholder="${info.placeholder}" 
+                           data-field="${name}" data-panel="true" value="${escapeHtml(value || '')}" 
+                           readonly data-editing="false">
+                </div>
+            `;
+        },
+        
+        /**
+         * Render a full-width panel field (e.g. RATING, DISCSUBTITLE, COUNTRY)
+         */
+        renderPanelField(container, name, info, value) {
+            const fieldHtml = `
+                <div class="form-group-with-button standard-field panel-field">
+                    <div class="form-group-wrapper">
+                        ${this.panelFieldInnerHtml(name, info, value)}
+                    </div>
+                    ${this.panelApplyControlsHtml(name, true)}
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', fieldHtml);
+            this.attachPanelFieldListeners(document.getElementById(`panel-${name}`));
+        },
+        
+        /**
+         * Render a row of panel fields, each a third of the width
+         * (or two thirds + one third when wideFirst is set)
+         */
+        renderPanelRow(container, names, wideFirst, rowId) {
+            let rowHtml = `<div class="form-group-three-column panel-row${wideFirst ? ' panel-row-wide-first' : ''}" data-row="${rowId}">`;
+            names.forEach(name => {
+                rowHtml += `<div class="form-group-wrapper">${this.panelFieldInnerHtml(name, panelFieldsInfo[name], panelOriginals[name])}</div>`;
+            });
+            rowHtml += `</div>`;
+            
+            // Apply controls for the row, shown underneath when a field in it changes
+            let applyHtml = `
+                <div class="grouped-apply-controls panel-apply-controls" data-row="${rowId}" style="display: none;">
+                    <div class="grouped-apply-header">
+                        <span class="grouped-apply-title">Apply changes:</span>
+                    </div>
+                    <div class="grouped-apply-items">`;
+            names.forEach(name => {
+                applyHtml += `
+                        <div class="grouped-apply-item" data-field="${name}" style="display: none;">
+                            <span class="field-change-indicator">${panelFieldsInfo[name].display}</span>
+                            ${this.panelApplyControlsHtml(name, false)}
+                        </div>`;
+            });
+            applyHtml += `
+                    </div>
+                </div>`;
+            
+            container.insertAdjacentHTML('beforeend', rowHtml + applyHtml);
+            names.forEach(name => this.attachPanelFieldListeners(document.getElementById(`panel-${name}`)));
+        },
+        
+        /**
+         * Show/hide the apply controls of a panel field depending on whether it changed
+         * @param {HTMLInputElement} input - Panel field input
+         */
+        updatePanelControls(input) {
+            const name = input.dataset.field;
+            const hasChanged = input.value !== (panelOriginals[name] || '');
+            const row = input.closest('.panel-row');
+            
+            if (row) {
+                const block = document.querySelector(`.panel-apply-controls[data-row="${row.dataset.row}"]`);
+                if (!block) return;
+                const item = block.querySelector(`.grouped-apply-item[data-field="${name}"]`);
+                if (item) {
+                    item.classList.toggle('visible', hasChanged);
+                    item.style.display = hasChanged ? 'flex' : 'none';
+                }
+                const anyChanged = Array.from(row.querySelectorAll('input[data-panel="true"]'))
+                    .some(inp => inp.value !== (panelOriginals[inp.dataset.field] || ''));
+                block.classList.toggle('visible', anyChanged);
+                block.style.display = anyChanged ? 'block' : 'none';
+            } else {
+                const controls = document.querySelector(`.apply-field-controls[data-field="${name}"]`);
+                if (controls) {
+                    controls.classList.toggle('visible', hasChanged);
+                }
+            }
+        },
+        
+        /**
+         * Attach change listeners to a panel field input
+         */
+        attachPanelFieldListeners(input) {
+            if (!input) return;
+            const update = () => this.updatePanelControls(input);
+            input.addEventListener('input', update);
+            input.addEventListener('focus', update);
+        },
+        
+        /**
+         * Panel fields whose value differs from what is saved in the file
+         * @returns {Array} [name, value] pairs
+         */
+        getChangedPanelFields() {
+            const changes = [];
+            Object.keys(panelFieldsInfo).forEach(name => {
+                const input = document.getElementById(`panel-${name}`);
+                if (!input) return;
+                const value = input.value.trim();
+                if (value !== (panelOriginals[name] || '')) {
+                    changes.push([name, value]);
+                }
+            });
+            return changes;
+        },
+        
+        /**
+         * Save a panel field to the current file or to all files in the current folder,
+         * using the same mechanism as "Add new metadata field"
+         * @param {string} name - Panel field name (e.g. 'RATING')
+         * @param {boolean} toFolder - Apply to all files in the folder (not subfolders)
+         */
+        async savePanelField(name, toFolder) {
+            if (!State.currentFile || !isPanelField(name)) return;
+            
+            const input = document.getElementById(`panel-${name}`);
+            if (!input) return;
+            
+            const selector = toFolder ? '.apply-folder-btn-new' : '.apply-file-btn';
+            const button = document.querySelector(`${selector}[data-field="${name}"]`);
+            const value = input.value.trim();
+            
+            if (button) button.disabled = true;
+            if (toFolder) UIUtils.setFormEnabled(false);
+            ButtonStatus.showButtonStatus(button, toFolder ? 'Applying to folder...' : 'Saving to file...', 'processing');
+            
+            try {
+                let result;
+                if (toFolder) {
+                    const folderPath = State.currentFile.substring(0, State.currentFile.lastIndexOf('/'));
+                    result = await API.applyFieldToFolder(folderPath, name, value);
+                } else {
+                    result = await API.createField(State.currentFile, name, value);
+                }
+                
+                if (result.status === 'success' || (toFolder && result.status === 'partial')) {
+                    const message = toFolder ? `Applied to ${result.filesUpdated} files!` : 'Saved to file!';
+                    ButtonStatus.showButtonStatus(button, message, result.status === 'partial' ? 'warning' : 'success', 2000);
+                    panelOriginals[name] = value;
+                    input.value = value;
+                    setTimeout(() => this.updatePanelControls(input), 1000);
+                    loadHistoryCallback();
+                    
+                    input.focus();
+                    input.dataset.editing = 'false';
+                    input.readOnly = true;
+                } else {
+                    ButtonStatus.showButtonStatus(button, result.error || result.message || 'Failed to save', 'error');
+                }
+            } catch (err) {
+                console.error(`Error saving ${name}:`, err);
+                ButtonStatus.showButtonStatus(button, 'Error saving field', 'error');
+            }
+            
+            if (button) button.disabled = false;
+            if (toFolder) UIUtils.setFormEnabled(true);
         },
         
         renderStandardField(container, field, info, value) {
@@ -865,9 +1206,21 @@
             // Clear dynamic fields tracking
             dynamicFields.clear();
             
+            // Keys of fields already shown as panel fields (RATING, LABEL, ...)
+            const panelFieldIds = new Set(
+                Object.values(metadata.panel_fields || {})
+                    .map(info => info && info.field_id)
+                    .filter(Boolean)
+            );
+
             // Render all discovered fields
             if (metadata.all_fields) {
                 Object.entries(metadata.all_fields).forEach(([fieldId, fieldInfo]) => {
+                    // Skip fields shown in the top section as panel fields
+                    if (panelFieldIds.has(fieldId)) {
+                        return;
+                    }
+
                     // Validate field ID before rendering (defensive check)
                     if (!fieldId || fieldId.length > 50) {
                         return;
@@ -1651,8 +2004,8 @@
             const confirmUI = document.createElement('div');
             confirmUI.className = 'delete-confirmation';
             
-            // Determine if this is a grouped field
-            const isGroupedField = ['track', 'disc', 'date'].includes(fieldId);
+            // Determine if this is a grouped field (in a multi-column row)
+            const isGroupedField = isGroupedFieldId(fieldId);
             
             if (isGroupedField) {
                 // GROUPED FIELDS: Insert after label-with-delete div (between label and input)
@@ -1775,13 +2128,7 @@
             }
             
             // Remove class from parent container for grouped fields
-            const isGroupedField = ['track', 'disc', 'date'].includes(fieldId);
-            if (isGroupedField) {
-                const threeColumnContainer = fieldElement.closest('.form-group-three-column');
-                if (threeColumnContainer) {
-                    threeColumnContainer.classList.remove('has-confirmation-ui');
-                }
-            }
+            clearConfirmationLayout();
         },
 
         /**
@@ -1802,13 +2149,7 @@
             }
             
             // Remove class from parent container for grouped fields
-            const isGroupedField = ['track', 'disc', 'date'].includes(fieldId);
-            if (isGroupedField) {
-                const threeColumnContainer = document.querySelector('.form-group-three-column');
-                if (threeColumnContainer) {
-                    threeColumnContainer.classList.remove('has-confirmation-ui');
-                }
-            }
+            clearConfirmationLayout();
             
             try {
                 // Determine the next field to focus BEFORE deletion
@@ -1844,7 +2185,22 @@
                     const isStandardField = standardFields.includes(fieldId);
                     let fieldElement = null;
                     
-                    if (isStandardField) {
+                    if (isPanelField(fieldId)) {
+                        // Panel fields are permanent - just clear the value
+                        const input = document.getElementById(`panel-${fieldId}`);
+                        panelOriginals[fieldId] = '';
+                        if (input) {
+                            input.value = '';
+                            this.updatePanelControls(input);
+                        }
+                    } else if (isStandardField && alwaysShownStandardFields.includes(fieldId)) {
+                        // Always-shown standard fields stay visible, just emptied
+                        const input = document.getElementById(fieldId);
+                        if (input) {
+                            input.value = '';
+                        }
+                        this.hideFieldControls(fieldId);
+                    } else if (isStandardField) {
                         // For standard fields, find the form-group-with-button container
                         const input = document.getElementById(fieldId);
                         if (input) {
@@ -1868,7 +2224,9 @@
                     }
                     
                     // Update internal state
-                    if (isStandardField) {
+                    if (isPanelField(fieldId)) {
+                        // Already handled above
+                    } else if (isStandardField) {
                         // For standard fields, clear the value
                         State.originalMetadata[fieldId] = '';
                     } else {
@@ -1971,13 +2329,7 @@
             if (confirmUI) confirmUI.remove();
             
             // Remove class from parent container for grouped fields
-            const isGroupedField = ['track', 'disc', 'date'].includes(fieldId);
-            if (isGroupedField) {
-                const threeColumnContainer = document.querySelector('.form-group-three-column');
-                if (threeColumnContainer) {
-                    threeColumnContainer.classList.remove('has-confirmation-ui');
-                }
-            }
+            clearConfirmationLayout();
             
             try {
                 const folderPath = State.currentPath || '';
@@ -2114,7 +2466,13 @@
         confirmFolderApply(field) {
             // First hide the confirmation UI
             this.cancelFolderApply(field);
-            
+
+            // Panel fields are written using the custom field mechanism
+            if (isPanelField(field)) {
+                this.savePanelField(field, true);
+                return;
+            }
+
             // Then call the original applyFieldToFolder function
             this.applyFieldToFolder(field, ButtonStatus.showButtonStatus, UIUtils.setFormEnabled);
         },

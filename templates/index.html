@@ -137,6 +137,16 @@
                     
                     <div id="metadata-content-wrapper">
                     
+                    <!-- Folder tools -->
+                    <div class="panel-toolbar">
+                        <button type="button" class="replaygain-btn btn-status" onclick="window.MetadataRemote.Metadata.ReplayGain.run()"
+                                title="Calculate track and album ReplayGain (EBU R128, -18 LUFS) for all files in this folder and write the REPLAYGAIN_* tags">
+                            <span class="btn-status-content">Calculate ReplayGain (folder)</span>
+                            <span class="btn-status-message"></span>
+                        </button>
+                        <span class="replaygain-status" id="replaygain-status" aria-live="polite"></span>
+                    </div>
+                    
                     <div class="album-art-section">
                         <div class="album-art-container">
                             <div id="art-display">
@@ -154,6 +164,11 @@
                                 </button>
                                 <button class="delete-art-btn btn-status" onclick="deleteAlbumArt()" style="display: none;">
                                     <span class="btn-status-content">Delete</span>
+                                    <span class="btn-status-message"></span>
+                                </button>
+                                <button class="delete-art-folder-btn btn-status" onclick="window.MetadataRemote.Metadata.AlbumArt.deleteArtFromFolder()"
+                                        title="Delete embedded artwork from every file in this folder (not subfolders)">
+                                    <span class="btn-status-content">Delete art (folder)</span>
                                     <span class="btn-status-message"></span>
                                 </button>
                                 <input type="file" id="art-upload" accept="image/*" onchange="handleArtUpload(event)">
@@ -460,6 +475,7 @@
     <script src="{{ url_for('static', filename='js/metadata/inference.js') }}"></script>
     <script src="{{ url_for('static', filename='js/metadata/transition-controller.js') }}"></script>
     <script src="{{ url_for('static', filename='js/metadata/field-edit-modal.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/metadata/replaygain.js') }}"></script>
 
     <!-- History modules -->
     <script src="{{ url_for('static', filename='js/history/manager.js') }}"></script>

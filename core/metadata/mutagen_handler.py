@@ -43,6 +43,21 @@ from mutagen.id3 import PictureType
 from config import logger, FORMAT_METADATA_CONFIG
 
 
+# Permanent fields shown in the top section of the metadata panel, in addition
+# to the standard fields. They are written using the same mechanism as
+# user-created custom fields (write_custom_field / write_metadata), so e.g. in
+# MP3 'LABEL' maps to TPUB, 'GROUPING' to TIT1 and the rest to TXXX frames,
+# while FLAC/OGG store them as Vorbis comments of the same name.
+PANEL_FIELDS = [
+    'RATING',
+    'TRACKTOTAL', 'DISCTOTAL', 'ORIGINALYEAR',
+    'DISCSUBTITLE',
+    'LABEL', 'CUSTOM2',
+    'GROUPING', 'RELEASETYPE', 'CUSTOM1',
+    'COUNTRY',
+]
+
+
 class FieldNameMapper:
     """Maps between semantic field names and format-specific representations"""
     
@@ -2066,11 +2081,19 @@ class MutagenHandler:
             bool: True if successful
         """
         try:
+            # Panel fields (e.g. 'RATING', 'LABEL') are addressed by name; map the
+            # name to the key actually present in this file (e.g. 'TXXX:RATING', 'TPUB')
+            if field_id.upper() in PANEL_FIELDS:
+                resolved_id = self.resolve_panel_field_id(filepath, field_id)
+                if resolved_id is None:
+                    return True  # Nothing to delete in this file
+                field_id = resolved_id
+
             audio_file, format_type = self.detect_format(filepath)
             if audio_file is None:
                 logger.error("Could not open file with Mutagen")
                 return False
-            
+
             # Extract semantic name from field_id
             source_format = self._guess_source_format(field_id)
             semantic_name = FieldNameMapper.format_to_semantic(field_id, source_format)
@@ -2184,6 +2207,69 @@ class MutagenHandler:
             logger.error(f"Error deleting field {field_id}: {e}")
             return False
     
+    def find_panel_field(self, field_name: str, discovered: Dict[str, Dict[str, Any]],
+                         format_type: str) -> Tuple[Optional[str], str]:
+        """
+        Locate a panel field (e.g. RATING, LABEL) among a file's discovered fields.
+
+        Looks for the field in the same places write_custom_field() would put it,
+        matching case-insensitively, so values written by other taggers are found too.
+
+        Returns:
+            (field_id, value) - field_id is the key in `discovered`, or None if absent
+        """
+        candidates = []
+        if format_type in ('mp3', 'wav'):
+            frame_id = self.normalize_field_name(field_name)
+            if frame_id:
+                candidates.append(frame_id)
+            candidates.append(f'TXXX:{field_name}')
+        candidates.append(field_name)
+        candidates.append(f'----:com.apple.iTunes:{field_name}')
+        candidates.append(f'WM/{field_name}')
+
+        lower_map = {key.lower(): key for key in discovered.keys()}
+        for candidate in candidates:
+            key = lower_map.get(candidate.lower())
+            if key is not None:
+                value = discovered[key].get('value', '')
+                return key, '' if value is None else str(value)
+        return None, ''
+
+    def get_panel_fields(self, filepath: str,
+                         discovered: Optional[Dict[str, Dict[str, Any]]] = None) -> Dict[str, Dict[str, Any]]:
+        """
+        Get values of the permanent panel fields (PANEL_FIELDS) for a file.
+
+        Returns:
+            {FIELD_NAME: {'value': str, 'field_id': str or None}}
+        """
+        result = {name: {'value': '', 'field_id': None} for name in PANEL_FIELDS}
+        try:
+            _, format_type = self.detect_format(filepath)
+            if discovered is None:
+                discovered = self.discover_all_metadata(filepath)
+            for name in PANEL_FIELDS:
+                field_id, value = self.find_panel_field(name, discovered, format_type)
+                result[name] = {'value': value, 'field_id': field_id}
+        except Exception as e:
+            logger.error(f"Error reading panel fields for {filepath}: {e}")
+        return result
+
+    def resolve_panel_field_id(self, filepath: str, field_id: str) -> Optional[str]:
+        """
+        If field_id is a panel field name (e.g. 'RATING'), return the actual field key
+        used in this file (e.g. 'TXXX:RATING', 'rating', 'TPUB'), or None if the file
+        doesn't have it. Non-panel field IDs are returned unchanged.
+        """
+        if field_id.upper() not in PANEL_FIELDS:
+            return field_id
+        _, format_type = self.detect_format(filepath)
+        found_id, _ = self.find_panel_field(field_id.upper(),
+                                            self.discover_all_metadata(filepath),
+                                            format_type)
+        return found_id
+
     def _guess_source_format(self, field_id: str) -> str:
         """Guess the source format based on field ID pattern"""
         if field_id.startswith('TXXX:'):

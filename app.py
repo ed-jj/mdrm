@@ -54,7 +54,7 @@ from core.history import (
     create_metadata_action, create_batch_metadata_action,
     create_album_art_action, create_delete_field_action,
     create_field_creation_action, create_batch_field_creation_action,
-    create_batch_delete_field_action
+    create_batch_delete_field_action, create_batch_album_art_action
 )
 
 from core.inference import inference_engine
@@ -62,7 +62,7 @@ from core.file_utils import validate_path, fix_file_ownership, get_file_format
 from core.metadata.normalizer import normalize_metadata_tags, get_metadata_field_mapping
 from core.metadata.reader import read_metadata, get_format_limitations
 from core.metadata.writer import apply_metadata_to_file
-from core.metadata.mutagen_handler import mutagen_handler
+from core.metadata.mutagen_handler import mutagen_handler, PANEL_FIELDS
 from core.album_art.extractor import extract_album_art
 from core.album_art.processor import detect_corrupted_album_art, fix_corrupted_album_art
 from core.album_art.manager import (
@@ -70,6 +70,7 @@ from core.album_art.manager import (
     prepare_batch_album_art_change, record_batch_album_art_history
 )
 from core.batch.processor import process_folder_files
+from core import replaygain
 
 app = Flask(__name__)
 
@@ -503,6 +504,11 @@ def get_metadata(filename):
         # Discover all fields
         all_fields = mutagen_handler.discover_all_metadata(filepath)
         
+        # Values of the permanent panel fields (RATING, LABEL, ...) and the
+        # keys they were found under (so the UI can keep them out of the
+        # extended fields list)
+        panel_fields = mutagen_handler.get_panel_fields(filepath, all_fields)
+        
         # Get album art
         art = extract_album_art(filepath)
         standard_fields['hasArt'] = bool(art)
@@ -521,6 +527,7 @@ def get_metadata(filename):
             'standard_fields': standard_fields,  # Existing 9 fields (with empty values for compatibility)
             'existing_standard_fields': existing_standard_fields,  # Only fields that actually exist
             'all_fields': all_fields,            # All discovered fields
+            'panel_fields': panel_fields,        # Permanent panel fields
             'album_art_data': art,
             'formatLimitations': format_limitations
         }
@@ -610,6 +617,13 @@ def delete_metadata_field(filename, field_id):
         # Define standard fields that are always valid for deletion
         standard_fields = ['title', 'artist', 'album', 'albumartist', 'date', 'genre', 'composer', 'track', 'disc']
         is_standard = field_id.lower() in standard_fields
+        
+        # Panel fields (RATING, LABEL, ...) are addressed by name - map to the actual key in this file
+        if field_id.upper() in PANEL_FIELDS:
+            resolved_id = mutagen_handler.resolve_panel_field_id(file_path, field_id)
+            if resolved_id is None:
+                return jsonify({'error': 'Field not found'}), 404
+            field_id = resolved_id
         
         # Check if field exists (skip check for standard fields as they're excluded from all_fields)
         if field_id.lower() not in standard_fields and field_id not in all_fields:
@@ -999,9 +1013,14 @@ def delete_field_from_folder():
                     all_fields = mutagen_handler.get_all_fields(file_path)
                     metadata = mutagen_handler.read_metadata(file_path)
                     
+                    # Panel fields are addressed by name - look up the actual key in this file
+                    file_field_id = field_id
+                    if field_id.upper() in PANEL_FIELDS:
+                        file_field_id = mutagen_handler.resolve_panel_field_id(file_path, field_id) or ''
+                    
                     # Check if field exists
-                    if field_id in all_fields or field_id in metadata:
-                        old_value = all_fields.get(field_id, {}).get('value', '') or metadata.get(field_id, '')
+                    if file_field_id and (file_field_id in all_fields or file_field_id in metadata):
+                        old_value = all_fields.get(file_field_id, {}).get('value', '') or metadata.get(file_field_id, '')
                         file_changes.append((file_path, old_value))
                     else:
                         files_skipped += 1
@@ -1037,6 +1056,186 @@ def delete_field_from_folder():
     except Exception as e:
         logger.error(f"Error in batch field deletion: {e}")
         return jsonify({'error': str(e)}), 500
+
+def list_folder_audio_files(abs_folder_path):
+    """Audio files directly inside a folder (not subfolders), sorted by name"""
+    audio_files = []
+    for filename in sorted(os.listdir(abs_folder_path)):
+        if filename.startswith('.') and not SHOW_HIDDEN_FILES:
+            continue
+        file_path = os.path.join(abs_folder_path, filename)
+        if os.path.isfile(file_path) and filename.lower().endswith(AUDIO_EXTENSIONS):
+            audio_files.append(file_path)
+    return audio_files
+
+@app.route('/delete-art-from-folder', methods=['POST'])
+def delete_art_from_folder():
+    """Delete embedded album art from all audio files in a folder (not subfolders)"""
+    data = request.json or {}
+    folder_path = data.get('folderPath', '')
+
+    try:
+        abs_folder_path = validate_path(os.path.join(MUSIC_DIR, folder_path) if folder_path else MUSIC_DIR)
+        if not os.path.isdir(abs_folder_path):
+            return jsonify({'error': 'Folder not found'}), 404
+
+        audio_files = list_folder_audio_files(abs_folder_path)
+        if not audio_files:
+            return jsonify({'error': 'No audio files found in folder'}), 404
+
+        file_changes = []   # (filepath, old_art) for history
+        files_skipped = 0
+        errors = []
+
+        for file_path in audio_files:
+            filename = os.path.basename(file_path)
+            try:
+                current_art = extract_album_art(file_path)
+                if not current_art:
+                    files_skipped += 1
+                    continue
+                apply_metadata_to_file(file_path, {}, remove_art=True)
+                file_changes.append((file_path, current_art))
+            except Exception as e:
+                logger.error(f"Error deleting album art from {filename}: {e}")
+                errors.append(f"{filename}: {str(e)}")
+
+        if file_changes:
+            # Record as a batch album art action: undo restores each file's old art,
+            # redo removes it again (empty new art path = remove)
+            action = create_batch_album_art_action(folder_path, None, file_changes)
+            folder_name = os.path.basename(folder_path) or "root"
+            action.description = f"Deleted album art from {len(file_changes)} files in \"{folder_name}\""
+            for filepath, old_art in file_changes:
+                action.old_values[filepath] = history.save_album_art(old_art) if old_art else ''
+                action.new_values[filepath] = ''
+            history.add_action(action)
+
+        if errors and not file_changes:
+            return jsonify({'status': 'error', 'error': 'Failed to delete album art', 'errors': errors}), 500
+
+        return jsonify({
+            'status': 'partial' if errors else 'success',
+            'filesUpdated': len(file_changes),
+            'filesSkipped': files_skipped,
+            'errors': errors
+        })
+
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 403
+    except Exception as e:
+        logger.error(f"Error deleting album art from folder: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def _run_replaygain_job(job, folder_path, audio_files):
+    """Background job: analyse all files as one album, then write the 4 ReplayGain tags"""
+    job['stage'] = 'analysing'
+    job['total'] = len(audio_files)
+
+    def on_progress(done, total):
+        job['progress'] = done
+
+    results, errors = replaygain.calculate_album(audio_files, on_progress)
+    if not results:
+        job['status'] = 'error'
+        job['message'] = 'Analysis failed for all files'
+        job['result'] = {'errors': errors}
+        return
+
+    job['stage'] = 'writing'
+    job['progress'] = 0
+    job['total'] = len(results)
+
+    # Per field: files where the tag already existed (updates) and new ones (creations)
+    updates = {field: [] for field in replaygain.RG_FIELDS}
+    creations = {field: {} for field in replaygain.RG_FIELDS}
+    files_written = 0
+
+    for file_path, values in results.items():
+        filename = os.path.basename(file_path)
+        try:
+            discovered = mutagen_handler.discover_all_metadata(file_path)
+            _, format_type = mutagen_handler.detect_format(file_path)
+            file_ok = True
+            for field in replaygain.RG_FIELDS:
+                new_value = values[field]
+                existing_id, old_value = mutagen_handler.find_panel_field(field, discovered, format_type)
+
+                # ID3: remove a differently-cased TXXX frame (e.g. 'replaygain_track_gain'
+                # written by another tool) so the file doesn't end up with two copies
+                if (existing_id and existing_id.startswith('TXXX:')
+                        and existing_id != f'TXXX:{field}'):
+                    mutagen_handler.delete_field(file_path, existing_id)
+
+                # Same writing mechanism as user-created custom fields
+                if mutagen_handler.write_custom_field(file_path, field, new_value):
+                    if existing_id:
+                        updates[field].append((file_path, old_value, new_value))
+                    else:
+                        creations[field][file_path] = new_value
+                else:
+                    file_ok = False
+                    errors.append(f"{filename}: failed to write {field}")
+            if file_ok:
+                files_written += 1
+        except Exception as e:
+            logger.error(f"Error writing ReplayGain tags to {filename}: {e}")
+            errors.append(f"{filename}: {str(e)}")
+        job['progress'] += 1
+
+    # History (undoable per tag, like other batch field operations)
+    for field in replaygain.RG_FIELDS:
+        if updates[field]:
+            history.add_action(create_batch_metadata_action(
+                folder_path, field, '(recalculated)', updates[field]))
+        if creations[field]:
+            history.add_action(create_batch_field_creation_action(
+                list(creations[field].keys()), field, creations[field]))
+
+    any_result = next(iter(results.values()))
+    job['result'] = {
+        'filesUpdated': files_written,
+        'filesTotal': len(audio_files),
+        'albumGain': any_result['REPLAYGAIN_ALBUM_GAIN'],
+        'albumPeak': any_result['REPLAYGAIN_ALBUM_PEAK'],
+        'errors': errors
+    }
+    job['status'] = 'done'
+
+@app.route('/replaygain', methods=['POST'])
+def start_replaygain():
+    """Start ReplayGain calculation for all audio files in a folder (treated as one album)"""
+    data = request.json or {}
+    folder_path = data.get('folderPath', '')
+
+    try:
+        abs_folder_path = validate_path(os.path.join(MUSIC_DIR, folder_path) if folder_path else MUSIC_DIR)
+        if not os.path.isdir(abs_folder_path):
+            return jsonify({'error': 'Folder not found'}), 404
+
+        audio_files = list_folder_audio_files(abs_folder_path)
+        if not audio_files:
+            return jsonify({'error': 'No audio files found in folder'}), 404
+
+        if replaygain.is_running():
+            return jsonify({'error': 'A ReplayGain calculation is already running'}), 409
+
+        job_id = replaygain.start_job(_run_replaygain_job, folder_path, audio_files)
+        return jsonify({'status': 'started', 'jobId': job_id, 'total': len(audio_files)})
+
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 403
+    except Exception as e:
+        logger.error(f"Error starting ReplayGain calculation: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/replaygain/<job_id>')
+def replaygain_status(job_id):
+    """Get progress / result of a ReplayGain job"""
+    job = replaygain.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)
 
 # =================
 # HISTORY ENDPOINTS
