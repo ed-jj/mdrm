@@ -32,7 +32,7 @@ Multi-architecture Docker images available for x86_64, ARM64, and ARMv7.
 
 ## Fork additions (ed-jj/mdrm)
 
-- **Extra permanent tag fields** in the top section of the metadata panel: `RATING`, `TRACKTOTAL`, `DISCTOTAL`, `ORIGINALYEAR`, `DISCSUBTITLE`, `LABEL`, `CUSTOM2`, `GROUPING`, `RELEASETYPE`, `CUSTOM1` and `COUNTRY`. They are written exactly like fields created with "Add new metadata field" (e.g. Vorbis comments of the same name in FLAC/OGG; `TXXX` frames in MP3, except `LABEL` → `TPUB` and `GROUPING` → `TIT1`), and each one can be applied to the current file or to every file in the current folder.
+- **Extra permanent tag fields** in the top section of the metadata panel: `RATING`, `TRACKTOTAL`, `DISCTOTAL`, `ORIGINALYEAR`, `DISCSUBTITLE`, `LABEL`, `CUSTOM2`, `GROUPING`, `RELEASETYPE`, `CUSTOM1` and `RELEASECOUNTRY`. They are written exactly like fields created with "Add new metadata field" (e.g. Vorbis comments of the same name in FLAC/OGG; `TXXX` frames in MP3, except `LABEL` → `TPUB` and `GROUPING` → `TIT1`), and each one can be applied to the current file or to every file in the current folder.
 - **Delete art (folder)** removes embedded artwork from every file in the current folder (not subfolders). Undoable from the history panel.
 - **Calculate ReplayGain (folder)** measures loudness with ffmpeg (EBU R128 / ITU-R BS.1770, ReplayGain 2.0 reference of -18 LUFS, sample peak) and writes `REPLAYGAIN_TRACK_GAIN`, `REPLAYGAIN_TRACK_PEAK`, `REPLAYGAIN_ALBUM_GAIN` and `REPLAYGAIN_ALBUM_PEAK` to every file in the current folder, treating the folder as one album. Album gain is computed from all tracks' audio together (as foobar2000 does), not as an average of track gains. Requires `ffmpeg`, which the Docker image includes.
 
