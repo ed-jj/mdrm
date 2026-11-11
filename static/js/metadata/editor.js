@@ -333,7 +333,8 @@
          * @param {Function} showButtonStatus - Callback to show button status
          */
         async save(showButtonStatus) {
-            if (!State.currentFile) return;
+            if (!State.currentFile) return false;
+            let saved = false;
             
             // Store the currently focused element
             const previouslyFocused = document.activeElement;
@@ -414,6 +415,7 @@
                     showButtonStatus(button, 'Some fields failed', 'error');
                     loadHistoryCallback();
                 } else if (result.status === 'success') {
+                    saved = true;
                     showButtonStatus(button, 'Saved!', 'success', 3000);
                     
                     Object.keys(data).forEach(key => {
@@ -465,6 +467,38 @@
                     element.readOnly = true;
                 }
             }
+            
+            return saved;
+        },
+        
+        /**
+         * Whether the panel has edits that haven't been written to the file yet
+         * (standard, panel and extended fields, and pending album art)
+         * @returns {boolean}
+         */
+        hasUnsavedChanges() {
+            if (!State.currentFile) return false;
+            if (State.pendingAlbumArt) return true;
+            
+            const norm = v => (v === undefined || v === null || v === ' ') ? '' : String(v);
+            
+            const standardChanged = standardFields.some(field => {
+                const input = document.getElementById(field);
+                if (!input || input.disabled || input.tagName !== 'INPUT') return false;
+                return norm(input.value) !== norm(State.originalMetadata[field]);
+            });
+            if (standardChanged) return true;
+            
+            if (this.getChangedPanelFields().length > 0) return true;
+            
+            const dynamicInputs = document.querySelectorAll('#dynamic-fields-container input[data-dynamic="true"]');
+            return Array.from(dynamicInputs).some(input => {
+                const info = dynamicFields.get(input.dataset.field);
+                if (input.disabled || (info && !info.is_editable)) {
+                    return false;
+                }
+                return norm(input.value) !== norm(State.originalMetadata[input.dataset.field]);
+            });
         },
         
         /**

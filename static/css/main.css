@@ -4109,3 +4109,420 @@ button:focus:not(:active):not(.processing):not(.success):not(.error):not(.warnin
 :root[data-theme="light"] .replaygain-btn.confirming {
     background: linear-gradient(135deg, #e05050 0%, #d04040 100%);
 }
+
+/* =========================================================
+   Previous / next file buttons, unsaved prompt, mobile layout
+   ========================================================= */
+
+/* Desktop: ‹ › next to the filename */
+.metadata-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.metadata-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.file-step-buttons {
+    display: flex;
+    gap: 0.4rem;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.file-step-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 1px solid #2e3a55;
+    background: #1d2433;
+    color: #cfe0ff;
+    font-size: 1.5rem;
+    line-height: 1;
+    padding: 0 0 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.file-step-btn:hover:not(.nav-disabled) {
+    background: #26314a;
+    border-color: var(--accent-primary);
+}
+
+.file-step-btn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+.file-step-btn.nav-disabled {
+    background: #151515;
+    border-color: #222;
+    color: #3a3a3a;
+    cursor: default;
+    pointer-events: none;
+}
+
+:root[data-theme="light"] .file-step-btn {
+    background: #f3ece2;
+    border-color: #d8c9b3;
+    color: #8a5a35;
+}
+
+:root[data-theme="light"] .file-step-btn:hover:not(.nav-disabled) {
+    background: #eadfce;
+    border-color: var(--accent-primary);
+}
+
+:root[data-theme="light"] .file-step-btn.nav-disabled {
+    background: #f6f2ec;
+    border-color: #ebe3d7;
+    color: #cfc4b4;
+}
+
+/* Unsaved changes prompt */
+.unsaved-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 1000;
+    display: none;
+}
+
+.unsaved-box {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: min(420px, calc(100vw - 32px));
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    padding: 1.25rem;
+    z-index: 1001;
+    display: none;
+}
+
+.unsaved-overlay.active { display: block; }
+.unsaved-box.active { display: block; }
+
+.unsaved-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.unsaved-text {
+    color: var(--text-secondary);
+    margin-bottom: 1.1rem;
+    overflow-wrap: anywhere;
+}
+
+.unsaved-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.unsaved-btn {
+    flex: 1;
+    padding: 0.6rem 0.5rem;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: white;
+}
+
+.unsaved-save { background: linear-gradient(135deg, #2d5a2d 0%, #3a7a3a 100%); }
+.unsaved-discard { background: linear-gradient(135deg, #5a2a2a 0%, #7a3a3a 100%); }
+.unsaved-cancel { background: #3a3a3a; }
+
+.unsaved-btn:focus-visible {
+    outline: 2px solid var(--accent-primary);
+    outline-offset: 2px;
+}
+
+:root[data-theme="light"] .unsaved-save { background: linear-gradient(135deg, #7fb069 0%, #6fa059 100%); }
+:root[data-theme="light"] .unsaved-discard { background: linear-gradient(135deg, #d64545 0%, #c63535 100%); }
+:root[data-theme="light"] .unsaved-cancel { background: #b5a993; }
+
+/* Mobile-only elements are hidden on desktop */
+.mobile-crumb,
+.mobile-tabbar {
+    display: none;
+}
+
+/* Touch screens have no hover: always show the field delete buttons */
+@media (hover: none) {
+    .delete-field-btn {
+        opacity: 0.6;
+    }
+}
+
+/* ---------- Mobile: one panel at a time ---------- */
+@media (max-width: 900px) {
+    body {
+        height: 100vh;
+        height: 100dvh;
+    }
+    
+    .header {
+        padding: 0.5rem 1rem;
+    }
+    
+    .help-button {
+        right: 1rem;
+    }
+    
+    .divider {
+        display: none !important;
+    }
+    
+    /* Override the desktop pane sizes (also set inline by the resize code) */
+    .container > .folders,
+    .container > .files,
+    .container > .metadata {
+        display: none !important;
+        flex: 1 1 auto !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+    
+    body[data-mobile-tab="folders"] .container > .folders,
+    body[data-mobile-tab="files"] .container > .files,
+    body[data-mobile-tab="tags"] .container > .metadata {
+        display: flex !important;
+    }
+    
+    /* History only belongs with the tag editor */
+    body:not([data-mobile-tab="tags"]) .history-panel {
+        display: none !important;
+    }
+    
+    /* Breadcrumb bar: back + where you are */
+    body[data-mobile-tab="files"] .mobile-crumb,
+    body[data-mobile-tab="tags"] .mobile-crumb {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.45rem 1rem;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--border-color);
+        flex-shrink: 0;
+        min-width: 0;
+    }
+    
+    .mobile-back {
+        background: none;
+        border: none;
+        color: var(--accent-primary);
+        font-size: 0.95rem;
+        font-weight: 600;
+        padding: 0.35rem 0.6rem 0.35rem 0;
+        border-right: 1px solid var(--border-light);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    
+    .mobile-crumb-path {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
+    }
+    
+    /* Bottom tab bar */
+    .mobile-tabbar {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        height: 60px;
+        padding: 0 0.5rem env(safe-area-inset-bottom, 0);
+        box-sizing: content-box;
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--border-color);
+        position: relative;
+        z-index: 30;
+    }
+    
+    .mobile-tab {
+        flex: 1;
+        height: 100%;
+        background: none;
+        border: none;
+        cursor: pointer;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    .mobile-tab-icon {
+        font-size: 1.5rem;
+        filter: grayscale(1);
+        opacity: 0.45;
+    }
+    
+    .mobile-tab.active .mobile-tab-icon {
+        filter: none;
+        opacity: 1;
+    }
+    
+    .mobile-tab.active::after {
+        content: '';
+        position: absolute;
+        bottom: 7px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 22px;
+        height: 3px;
+        border-radius: 2px;
+        background: var(--accent-primary);
+    }
+    
+    /* ‹ › only while editing tags */
+    .mobile-nav-btn {
+        display: none;
+        width: 44px;
+        height: 44px;
+        font-size: 1.7rem;
+        margin: 0 0.25rem;
+        flex-shrink: 0;
+    }
+    
+    body[data-mobile-tab="tags"] .mobile-nav-btn {
+        display: flex;
+    }
+    
+    /* The tab bar has the arrows on mobile */
+    .metadata .file-step-buttons {
+        display: none;
+    }
+    
+    /* Bigger rows in the folder tree and file list */
+    .tree-item-content {
+        min-height: 46px;
+    }
+    
+    #file-list li {
+        min-height: 52px;
+    }
+    
+    #file-list li .play-button {
+        display: flex;
+        width: 34px;
+        height: 34px;
+        flex-shrink: 0;
+    }
+    
+    /* Tag panel */
+    .metadata-content {
+        padding: 0.6rem 0.9rem 2.5rem;
+    }
+    
+    .metadata-content h3 {
+        font-size: 1rem;
+    }
+    
+    .album-art-section {
+        justify-content: stretch;
+    }
+    
+    .album-art-container {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    
+    .album-art-controls {
+        flex: 1;
+    }
+    
+    .album-art-controls button {
+        padding: 0.55rem 0.75rem;
+        font-size: 0.85rem;
+    }
+    
+    .replaygain-btn {
+        width: 100%;
+        padding: 0.6rem 0.8rem;
+        font-size: 0.85rem;
+    }
+    
+    /* 16px stops iOS zooming in when a field is tapped */
+    .metadata input[type="text"],
+    .new-field-form input {
+        font-size: 16px;
+    }
+    
+    .delete-field-btn {
+        opacity: 0.6;
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+    }
+    
+    /* Apply controls drop below full-width fields, with finger-sized buttons */
+    .form-group-with-button {
+        flex-wrap: wrap;
+    }
+    
+    .form-group-with-button > .apply-field-controls.visible {
+        width: 100%;
+    }
+    
+    .apply-field-btn {
+        flex: 1;
+        padding: 0.6rem 0.9rem;
+        font-size: 0.9rem;
+    }
+    
+    .folder-confirmation .confirm-yes,
+    .folder-confirmation .confirm-no,
+    .inline-choice-btn {
+        padding: 0.45rem 0.9rem;
+        font-size: 0.85rem;
+    }
+    
+    .form-group-three-column {
+        gap: 0.5rem;
+    }
+    
+    .form-group-three-column.panel-row-wide-first .form-group-wrapper:first-child {
+        flex: 0 0 calc((100% - 1rem) * 2 / 3 + 0.5rem);
+    }
+    
+    .buttons button {
+        padding: 0.7rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    /* History as a full-height sheet, list above details */
+    .history-panel.expanded {
+        height: 100% !important;
+        max-height: none;
+    }
+    
+    .history-panel.expanded .history-content {
+        flex-direction: column;
+    }
+    
+    .history-list,
+    .history-details {
+        flex: 1 1 50% !important;
+        border-right: none;
+    }
+    
+    .history-divider {
+        display: none;
+    }
+}
