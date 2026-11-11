@@ -43,6 +43,12 @@
         <button class="help-button" id="help-button" title="Show keyboard shortcuts" tabindex="0"><b>?</b></button>
     </div>
     
+    <!-- Mobile: where you are + back (hidden on desktop) -->
+    <div class="mobile-crumb" id="mobile-crumb">
+        <button type="button" class="mobile-back" id="mobile-back"></button>
+        <span class="mobile-crumb-path" id="mobile-crumb-path"></span>
+    </div>
+    
     <div class="container">
         <div class="folders" tabindex="0" id="folders-pane">
             <div class="pane-header">
@@ -116,7 +122,13 @@
                 </div>
                 
                 <div id="metadata-section" style="display: none;">
-                    <h3>Metadata for: <span id="current-filename" class="filename-display" tabindex="0"></span></h3>
+                    <h3 class="metadata-title">
+                        <span class="metadata-title-text">Metadata for: <span id="current-filename" class="filename-display" tabindex="0"></span></span>
+                        <span class="file-step-buttons">
+                            <button type="button" class="file-step-btn file-prev-btn" title="Previous file in folder" aria-label="Previous file in folder" onclick="window.MetadataRemote.Files.Navigation.step(-1)">&#8249;</button>
+                            <button type="button" class="file-step-btn file-next-btn" title="Next file in folder" aria-label="Next file in folder" onclick="window.MetadataRemote.Files.Navigation.step(1)">&#8250;</button>
+                        </span>
+                    </h3>
                     
                     <div class="filename-edit">
                         <input type="text" id="filename-input" placeholder="Enter new filename">
@@ -281,6 +293,27 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
+    
+    <!-- Mobile: tab bar with previous / next file (hidden on desktop) -->
+    <nav class="mobile-tabbar" id="mobile-tabbar" aria-label="Panels">
+        <button type="button" class="mobile-nav-btn file-step-btn file-prev-btn" aria-label="Previous file in folder" title="Previous file" onclick="window.MetadataRemote.Files.Navigation.step(-1)">&#8249;</button>
+        <button type="button" class="mobile-tab" data-tab="folders" aria-label="Folders" title="Folders"><span class="mobile-tab-icon">📁</span></button>
+        <button type="button" class="mobile-tab" data-tab="files" aria-label="Files" title="Files"><span class="mobile-tab-icon">🎵</span></button>
+        <button type="button" class="mobile-tab" data-tab="tags" aria-label="Tags" title="Tags"><span class="mobile-tab-icon">🏷️</span></button>
+        <button type="button" class="mobile-nav-btn file-step-btn file-next-btn" aria-label="Next file in folder" title="Next file" onclick="window.MetadataRemote.Files.Navigation.step(1)">&#8250;</button>
+    </nav>
+    
+    <!-- Unsaved changes prompt (shown when moving to another file with ‹ ›) -->
+    <div class="unsaved-overlay" id="unsaved-overlay"></div>
+    <div class="unsaved-box" id="unsaved-box" role="alertdialog" aria-modal="true" aria-labelledby="unsaved-title" aria-describedby="unsaved-text">
+        <div class="unsaved-title" id="unsaved-title">Unsaved changes</div>
+        <div class="unsaved-text" id="unsaved-text">Save your changes to this file before moving on?</div>
+        <div class="unsaved-actions">
+            <button type="button" class="unsaved-btn unsaved-save" id="unsaved-save">Save</button>
+            <button type="button" class="unsaved-btn unsaved-discard" id="unsaved-discard">Don't save</button>
+            <button type="button" class="unsaved-btn unsaved-cancel" id="unsaved-cancel">Cancel</button>
         </div>
     </div>
     
@@ -477,6 +510,10 @@
     <script src="{{ url_for('static', filename='js/metadata/field-edit-modal.js') }}"></script>
     <script src="{{ url_for('static', filename='js/metadata/replaygain.js') }}"></script>
 
+    <!-- Previous / next file and mobile layout -->
+    <script src="{{ url_for('static', filename='js/files/file-navigation.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/ui/mobile-layout.js') }}"></script>
+    
     <!-- History modules -->
     <script src="{{ url_for('static', filename='js/history/manager.js') }}"></script>
   
