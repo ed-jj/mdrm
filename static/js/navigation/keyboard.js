@@ -611,6 +611,7 @@
                 'filename-reset',
                 'filename-cancel',
                 '.replaygain-btn',
+                '.spectrogram-btn',
                 '.upload-btn',
                 '.save-image-btn',
                 '.apply-folder-btn',

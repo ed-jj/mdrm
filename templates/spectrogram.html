@@ -1,0 +1,285 @@
+<!--
+  Metadata Remote - Intelligent audio metadata editor
+  Copyright (C) 2025 Dr. William Nelson Leonard
+
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU Affero General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU Affero General Public License for more details.
+
+  You should have received a copy of the GNU Affero General Public License
+  along with this program.  If not, see <https://www.gnu.org/licenses/>.
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ filename }} – Spectrogram</title>
+    <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
+    <style>
+        :root {
+            --bg: #0a0a0a;
+            --card: #141414;
+            --border: #252525;
+            --text: #f0f0f0;
+            --muted: #8a8a8a;
+            --accent: #4a7fff;
+            --error: #ff6b6b;
+        }
+        * { box-sizing: border-box; }
+        [hidden] { display: none !important; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            font-size: 14px;
+        }
+        header {
+            padding: 14px 20px 10px;
+            border-bottom: 1px solid var(--border);
+            background: linear-gradient(180deg, #1a1a1a 0%, #141414 100%);
+        }
+        h1 {
+            margin: 0 0 8px;
+            font-size: 1.15rem;
+            font-weight: 500;
+            overflow-wrap: anywhere;
+        }
+        h1 .label { color: var(--muted); font-weight: 400; }
+        .info { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chip {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            padding: 3px 10px;
+            font-size: 0.8rem;
+            color: #cfcfcf;
+        }
+        .controls {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 12px 18px;
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+        .group { display: flex; align-items: center; gap: 8px; }
+        .group-label { color: var(--muted); font-size: 0.8rem; }
+        .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+        .segmented button {
+            background: var(--card);
+            color: #cfcfcf;
+            border: none;
+            padding: 6px 12px;
+            font-size: 0.82rem;
+            cursor: pointer;
+        }
+        .segmented button + button { border-left: 1px solid var(--border); }
+        .segmented button.active { background: #1d2a4a; color: #fff; }
+        .segmented button:focus-visible, .download:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+        .download {
+            margin-left: auto;
+            color: #cfe0ff;
+            background: #1d2433;
+            border: 1px solid #2e3a55;
+            border-radius: 8px;
+            padding: 6px 12px;
+            font-size: 0.82rem;
+            text-decoration: none;
+        }
+        .download[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
+        main { padding: 16px 20px 28px; }
+        .stage {
+            position: relative;
+            min-height: 300px;
+            background: #000;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .stage img { display: block; width: 100%; height: auto; }
+        .status {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            color: var(--muted);
+            text-align: center;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.6);
+        }
+        .status.error { color: var(--error); }
+        .spinner {
+            width: 34px; height: 34px;
+            border: 3px solid #2a2a2a;
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.9s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .hint { color: var(--muted); font-size: 0.78rem; margin-top: 10px; line-height: 1.5; }
+        @media (max-width: 600px) {
+            header, .controls { padding-left: 12px; padding-right: 12px; }
+            main { padding: 10px 8px 20px; }
+            .download { margin-left: 0; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1><span class="label">Spectrogram:</span> {{ filename }}</h1>
+        <div class="info">
+            {% for key in ['codec', 'sample_rate', 'bit_depth', 'channels', 'bitrate', 'duration'] %}
+                {% if info.get(key) %}<span class="chip">{{ info[key] }}</span>{% endif %}
+            {% endfor %}
+        </div>
+    </header>
+
+    <div class="controls">
+        <div class="group">
+            <span class="group-label">Frequency</span>
+            <div class="segmented" role="group" aria-label="Frequency scale">
+                <button type="button" data-option="fscale" data-value="lin" class="active">Linear</button>
+                <button type="button" data-option="fscale" data-value="log">Log</button>
+            </div>
+        </div>
+        <div class="group">
+            <span class="group-label">Channels</span>
+            <div class="segmented" role="group" aria-label="Channels">
+                <button type="button" data-option="mode" data-value="combined" class="active">Combined</button>
+                <button type="button" data-option="mode" data-value="separate">Separate</button>
+            </div>
+        </div>
+        <a class="download" id="download" href="#" download aria-disabled="true">Download PNG</a>
+    </div>
+
+    <main>
+        <div class="stage">
+            <img id="spectrogram" alt="Spectrogram of {{ filename }}" hidden>
+            <div class="status" id="status">
+                {% if supported %}
+                    <div class="spinner"></div>
+                    <div>Generating spectrogram…</div>
+                {% else %}
+                    <div>Spectrograms need ffmpeg with the showspectrumpic filter, which this server doesn't have.</div>
+                {% endif %}
+            </div>
+        </div>
+        <div class="hint">
+            Brightness shows loudness at each frequency over time (dBFS scale on the right).
+            A lossless file made from an MP3 or AAC usually shows a sharp cut-off around 16–20 kHz.
+        </div>
+    </main>
+
+    <script>
+    (function () {
+        var filepath = {{ filepath | tojson }};
+        var supported = {{ 'true' if supported else 'false' }};
+        var options = { fscale: 'lin', mode: 'combined' };
+        var img = document.getElementById('spectrogram');
+        var status = document.getElementById('status');
+        var download = document.getElementById('download');
+        var requestId = 0;
+
+        try {
+            var saved = JSON.parse(localStorage.getItem('mdrm-spectrogram-options') || '{}');
+            if (saved.fscale === 'lin' || saved.fscale === 'log') options.fscale = saved.fscale;
+            if (saved.mode === 'combined' || saved.mode === 'separate') options.mode = saved.mode;
+        } catch (e) {}
+
+        function encodePath(p) {
+            return p.split('/').map(encodeURIComponent).join('/');
+        }
+
+        function imageSize() {
+            // ffmpeg adds ~280 px of axes/legend around the plot; aim for a sharp image at this width
+            var stage = document.querySelector('.stage');
+            var dpr = Math.min(window.devicePixelRatio || 1, 2);
+            var target = Math.round((stage.clientWidth * dpr - 280) / 200) * 200;
+            var w = Math.max(600, Math.min(3000, target));
+            return { w: w, h: Math.round(w / 2) };
+        }
+
+        function syncButtons() {
+            document.querySelectorAll('.segmented button').forEach(function (b) {
+                var on = options[b.dataset.option] === b.dataset.value;
+                b.classList.toggle('active', on);
+                b.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+        }
+
+        function showStatus(html, isError) {
+            status.innerHTML = html;
+            status.classList.toggle('error', !!isError);
+            status.hidden = false;
+        }
+
+        function load() {
+            if (!supported) return;
+            var id = ++requestId;
+            var size = imageSize();
+            var url = '/spectrogram-image/' + encodePath(filepath) +
+                '?w=' + size.w + '&h=' + size.h +
+                '&fscale=' + options.fscale + '&mode=' + options.mode;
+
+            showStatus('<div class="spinner"></div><div>Generating spectrogram…</div>', false);
+            download.setAttribute('aria-disabled', 'true');
+
+            fetch(url, { credentials: 'same-origin' }).then(function (res) {
+                if (!res.ok) {
+                    return res.json().catch(function () { return {}; }).then(function (j) {
+                        throw new Error(j.error || ('Error ' + res.status));
+                    });
+                }
+                return res.blob();
+            }).then(function (blob) {
+                if (id !== requestId) return;
+                var objectUrl = URL.createObjectURL(blob);
+                img.onload = function () { status.hidden = true; };
+                if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
+                img.dataset.url = objectUrl;
+                img.src = objectUrl;
+                img.hidden = false;
+                download.href = objectUrl;
+                download.download = filepath.split('/').pop().replace(/\.[^.]+$/, '') + ' - spectrogram.png';
+                download.setAttribute('aria-disabled', 'false');
+            }).catch(function (err) {
+                if (id !== requestId) return;
+                var div = document.createElement('div');
+                div.textContent = 'Could not generate the spectrogram: ' + err.message;
+                status.innerHTML = '';
+                status.appendChild(div);
+                status.classList.add('error');
+                status.hidden = false;
+            });
+        }
+
+        document.querySelectorAll('.segmented button').forEach(function (b) {
+            b.addEventListener('click', function () {
+                if (options[b.dataset.option] === b.dataset.value) return;
+                options[b.dataset.option] = b.dataset.value;
+                try { localStorage.setItem('mdrm-spectrogram-options', JSON.stringify(options)); } catch (e) {}
+                syncButtons();
+                load();
+            });
+        });
+
+        syncButtons();
+        load();
+    })();
+    </script>
+</body>
+</html>

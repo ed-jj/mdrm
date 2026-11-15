@@ -156,6 +156,8 @@
                             <span class="btn-status-content">Calculate ReplayGain (folder)</span>
                             <span class="btn-status-message"></span>
                         </button>
+                        <button type="button" class="spectrogram-btn" style="display: none;" onclick="window.MetadataRemote.Metadata.Spectrogram.open()"
+                                title="Open the spectrogram of this file in a new tab">Spectrogram</button>
                         <span class="replaygain-status" id="replaygain-status" aria-live="polite"></span>
                     </div>
                     
@@ -509,6 +511,7 @@
     <script src="{{ url_for('static', filename='js/metadata/transition-controller.js') }}"></script>
     <script src="{{ url_for('static', filename='js/metadata/field-edit-modal.js') }}"></script>
     <script src="{{ url_for('static', filename='js/metadata/replaygain.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/metadata/spectrogram.js') }}"></script>
 
     <!-- Previous / next file and mobile layout -->
     <script src="{{ url_for('static', filename='js/files/file-navigation.js') }}"></script>

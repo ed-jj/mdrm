@@ -4061,6 +4061,27 @@ button:focus:not(:active):not(.processing):not(.success):not(.error):not(.warnin
     cursor: wait;
 }
 
+.spectrogram-btn {
+    padding: 0.4rem 0.8rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    background: linear-gradient(135deg, #2f4a4a 0%, #3c5d5d 100%);
+    color: white;
+    white-space: nowrap;
+}
+
+.spectrogram-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(47, 74, 74, 0.4);
+}
+
+:root[data-theme="light"] .spectrogram-btn {
+    background: linear-gradient(135deg, #6f8a7b 0%, #5f7a6b 100%);
+}
+
 .replaygain-status {
     font-size: 0.75rem;
     color: var(--text-muted);
@@ -4452,7 +4473,8 @@ button:focus:not(:active):not(.processing):not(.success):not(.error):not(.warnin
         font-size: 0.85rem;
     }
     
-    .replaygain-btn {
+    .replaygain-btn,
+    .spectrogram-btn {
         width: 100%;
         padding: 0.6rem 0.8rem;
         font-size: 0.85rem;
