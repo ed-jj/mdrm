@@ -70,7 +70,7 @@ from core.album_art.manager import (
     prepare_batch_album_art_change, record_batch_album_art_history
 )
 from core.batch.processor import process_folder_files
-from core import replaygain
+from core import replaygain, spectrogram
 
 app = Flask(__name__)
 
@@ -1055,6 +1055,48 @@ def delete_field_from_folder():
         return jsonify({'error': 'Invalid path'}), 403
     except Exception as e:
         logger.error(f"Error in batch field deletion: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/capabilities')
+def get_capabilities():
+    """Optional features available on this server (depend on the installed ffmpeg)"""
+    return jsonify({'spectrogram': spectrogram.is_supported()})
+
+@app.route('/spectrogram/<path:filepath>')
+def spectrogram_page(filepath):
+    """Page showing the spectrogram of one file (opened in its own tab)"""
+    try:
+        file_path = validate_path(os.path.join(MUSIC_DIR, filepath))
+        if not os.path.isfile(file_path):
+            return 'File not found', 404
+        return render_template('spectrogram.html',
+                               filename=os.path.basename(file_path),
+                               filepath=filepath,
+                               info=spectrogram.audio_info(file_path),
+                               supported=spectrogram.is_supported())
+    except ValueError:
+        return 'Invalid path', 403
+
+@app.route('/spectrogram-image/<path:filepath>')
+def spectrogram_image(filepath):
+    """Spectrogram PNG for a file. Query: w, h, fscale (lin|log), mode (combined|separate)"""
+    try:
+        file_path = validate_path(os.path.join(MUSIC_DIR, filepath))
+        if not os.path.isfile(file_path):
+            return jsonify({'error': 'File not found'}), 404
+        if not spectrogram.is_supported():
+            return jsonify({'error': 'Spectrograms need ffmpeg with the showspectrumpic filter'}), 501
+        width, height, fscale, mode = spectrogram.normalise_options(
+            request.args.get('w'), request.args.get('h'),
+            request.args.get('fscale'), request.args.get('mode'))
+        png = spectrogram.render(file_path, width, height, fscale, mode)
+        response = Response(png, mimetype='image/png')
+        response.headers['Cache-Control'] = 'private, max-age=3600'
+        return response
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 403
+    except Exception as e:
+        logger.error(f"Error rendering spectrogram for {filepath}: {e}")
         return jsonify({'error': str(e)}), 500
 
 def list_folder_audio_files(abs_folder_path):
