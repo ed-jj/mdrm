@@ -89,7 +89,11 @@ def analyze_file(filepath):
         'ffmpeg', '-nostdin', '-hide_banner', '-nostats',
         '-i', filepath,
         '-map', '0:a:0', '-vn', '-sn', '-dn',
-        '-af', 'astats=measure_perchannel=none,'
+        # Convert to floating point first so peaks are measured against full
+        # scale = 1.0 like foobar2000 (astats measures integer input against
+        # the largest positive value, e.g. 32767 for 16-bit)
+        '-af', 'aformat=sample_fmts=dbl|dblp,'
+               'astats=measure_perchannel=none,'
                'ebur128=metadata=1,'
                'ametadata=mode=print:key=lavfi.r128.M:file=-',
         '-f', 'null', '-'
