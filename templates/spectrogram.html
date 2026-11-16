@@ -19,7 +19,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>{{ filename }} – Spectrogram</title>
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='favicon.ico') }}">
     <style>
@@ -29,45 +29,58 @@
             --border: #252525;
             --text: #f0f0f0;
             --muted: #8a8a8a;
+            --axis: #b8b8b8;
             --accent: #4a7fff;
             --error: #ff6b6b;
         }
         * { box-sizing: border-box; }
         [hidden] { display: none !important; }
+        html, body { height: 100%; }
         body {
             margin: 0;
             background: var(--bg);
             color: var(--text);
             font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             font-size: 14px;
+            height: 100vh;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
         }
         header {
-            padding: 14px 20px 10px;
+            flex-shrink: 0;
+            padding: 10px 16px 8px;
             border-bottom: 1px solid var(--border);
             background: linear-gradient(180deg, #1a1a1a 0%, #141414 100%);
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px 14px;
         }
         h1 {
-            margin: 0 0 8px;
-            font-size: 1.15rem;
+            margin: 0;
+            font-size: 1.05rem;
             font-weight: 500;
             overflow-wrap: anywhere;
         }
         h1 .label { color: var(--muted); font-weight: 400; }
-        .info { display: flex; flex-wrap: wrap; gap: 6px; }
+        .info { display: flex; flex-wrap: wrap; gap: 5px; }
         .chip {
             background: var(--card);
             border: 1px solid var(--border);
             border-radius: 999px;
-            padding: 3px 10px;
-            font-size: 0.8rem;
+            padding: 2px 9px;
+            font-size: 0.76rem;
             color: #cfcfcf;
         }
         .controls {
+            flex-shrink: 0;
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 12px 18px;
-            padding: 10px 20px;
+            gap: 8px 16px;
+            padding: 8px 16px;
             border-bottom: 1px solid var(--border);
         }
         .group { display: flex; align-items: center; gap: 8px; }
@@ -92,22 +105,107 @@
             border-radius: 8px;
             padding: 6px 12px;
             font-size: 0.82rem;
-            text-decoration: none;
+            cursor: pointer;
         }
-        .download[aria-disabled="true"] { opacity: 0.4; pointer-events: none; }
-        main { padding: 16px 20px 28px; }
-        .stage {
+        .download:disabled { opacity: 0.5; cursor: wait; }
+
+        /* The chart fills all remaining space: frequency axis | plot | colour scale, time axis below */
+        main {
+            flex: 1;
+            min-height: 220px;
+            padding: 12px 12px 10px 4px;
+            display: grid;
+            grid-template-columns: 52px minmax(0, 1fr) 50px;
+            grid-template-rows: minmax(0, 1fr) 24px;
+            grid-template-areas: "freq plot bar" ". time .";
+        }
+        .plot {
+            grid-area: plot;
             position: relative;
-            min-height: 300px;
             background: #000;
-            border: 1px solid var(--border);
-            border-radius: 10px;
+            border: 1px solid #333;
             overflow: hidden;
-            display: flex;
-            align-items: center;
-            justify-content: center;
         }
-        .stage img { display: block; width: 100%; height: auto; }
+        .plot img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            image-rendering: auto;
+        }
+        .divider {
+            position: absolute;
+            left: 0; right: 0;
+            border-top: 1px solid rgba(255, 255, 255, 0.35);
+            pointer-events: none;
+        }
+        .channel-name {
+            position: absolute;
+            left: 6px;
+            font-size: 11px;
+            color: rgba(255, 255, 255, 0.75);
+            text-shadow: 0 0 3px #000;
+            pointer-events: none;
+        }
+        .freq-axis, .time-axis, .bar-axis { position: relative; font-size: 11px; color: var(--axis); font-variant-numeric: tabular-nums; }
+        .freq-axis { grid-area: freq; }
+        .time-axis { grid-area: time; }
+        .bar { grid-area: bar; position: relative; }
+        .freq-axis .tick {
+            position: absolute;
+            right: 0;
+            transform: translateY(-50%);
+            padding-right: 7px;
+            white-space: nowrap;
+        }
+        .freq-axis .tick::after {
+            content: '';
+            position: absolute;
+            right: 0; top: 50%;
+            width: 4px;
+            border-top: 1px solid #666;
+        }
+        .freq-axis .unit, .bar .unit {
+            position: absolute;
+            font-size: 10px;
+            color: var(--muted);
+        }
+        .freq-axis .unit { top: -14px; right: 6px; }
+        .time-axis .tick {
+            position: absolute;
+            top: 6px;
+            transform: translateX(-50%);
+            white-space: nowrap;
+        }
+        .time-axis .tick::before {
+            content: '';
+            position: absolute;
+            left: 50%; top: -6px;
+            height: 4px;
+            border-left: 1px solid #666;
+        }
+        .bar .scale {
+            position: absolute;
+            left: 6px; top: 0; bottom: 0;
+            width: 10px;
+            border: 1px solid #333;
+            background: linear-gradient(to bottom,
+                #fefffb 0%, #feffcc 4.17%, #feff9b 8.33%, #fef26a 12.5%, #fee13b 16.67%,
+                #fed00b 20.83%, #feaf00 25%, #fb8200 29.17%, #f75000 33.33%, #f21d00 37.5%,
+                #e70104 41.67%, #d60117 45.83%, #c30028 50%, #b2003a 54.17%, #9f014c 58.33%,
+                #8d005e 62.5%, #7b0170 66.67%, #66017b 70.83%, #4d0070 75%, #300064 79.17%,
+                #150158 83.33%, #00004b 87.5%, #000031 91.67%, #000017 95.83%, #000100 100%);
+        }
+        .bar .tick {
+            position: absolute;
+            left: 20px;
+            transform: translateY(-50%);
+            font-size: 10px;
+            color: var(--axis);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }
+        .bar .unit { top: -14px; left: 4px; }
         .status {
             position: absolute;
             inset: 0;
@@ -119,7 +217,8 @@
             color: var(--muted);
             text-align: center;
             padding: 20px;
-            background: rgba(0, 0, 0, 0.6);
+            background: rgba(0, 0, 0, 0.55);
+            z-index: 2;
         }
         .status.error { color: var(--error); }
         .spinner {
@@ -130,11 +229,23 @@
             animation: spin 0.9s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .hint { color: var(--muted); font-size: 0.78rem; margin-top: 10px; line-height: 1.5; }
+        .hint {
+            flex-shrink: 0;
+            color: var(--muted);
+            font-size: 0.74rem;
+            padding: 0 16px 8px;
+            line-height: 1.4;
+        }
         @media (max-width: 600px) {
-            header, .controls { padding-left: 12px; padding-right: 12px; }
-            main { padding: 10px 8px 20px; }
+            header { padding: 8px 12px 6px; }
+            .controls { padding: 6px 12px; gap: 6px 12px; }
+            .segmented button { padding: 6px 10px; }
             .download { margin-left: 0; }
+            main { padding: 10px 6px 8px 0; grid-template-columns: 44px minmax(0, 1fr) 44px; }
+            .hint { padding: 0 12px 6px; }
+        }
+        @media (max-height: 500px) {
+            .hint { display: none; }
         }
     </style>
 </head>
@@ -163,12 +274,15 @@
                 <button type="button" data-option="mode" data-value="separate">Separate</button>
             </div>
         </div>
-        <a class="download" id="download" href="#" download aria-disabled="true">Download PNG</a>
+        <button type="button" class="download" id="download"
+                title="Download a 1600 × 800 PNG with ffmpeg's own axes and scale">Download PNG</button>
     </div>
 
     <main>
-        <div class="stage">
+        <div class="freq-axis" id="freq-axis" aria-hidden="true"></div>
+        <div class="plot" id="plot">
             <img id="spectrogram" alt="Spectrogram of {{ filename }}" hidden>
+            <div id="overlay"></div>
             <div class="status" id="status">
                 {% if supported %}
                     <div class="spinner"></div>
@@ -178,21 +292,35 @@
                 {% endif %}
             </div>
         </div>
-        <div class="hint">
-            Brightness shows loudness at each frequency over time (dBFS scale on the right).
-            A lossless file made from an MP3 or AAC usually shows a sharp cut-off around 16–20 kHz.
-        </div>
+        <div class="bar" id="bar" aria-hidden="true"><div class="scale"></div></div>
+        <div class="time-axis" id="time-axis" aria-hidden="true"></div>
     </main>
+
+    <div class="hint">
+        Brightness shows loudness at each frequency over time. A lossless file made from an MP3 or AAC
+        usually shows a sharp cut-off around 16–20 kHz.
+    </div>
 
     <script>
     (function () {
         var filepath = {{ filepath | tojson }};
         var supported = {{ 'true' if supported else 'false' }};
+        var sampleRate = {{ info.get('sample_rate_hz', 44100) | tojson }};
+        var channelCount = {{ info.get('channel_count', 2) | tojson }};
+        var duration = {{ info.get('duration_seconds', 0) | tojson }};
+        var nyquist = sampleRate / 2;
+
         var options = { fscale: 'lin', mode: 'combined' };
+        var plot = document.getElementById('plot');
         var img = document.getElementById('spectrogram');
+        var overlay = document.getElementById('overlay');
         var status = document.getElementById('status');
+        var freqAxis = document.getElementById('freq-axis');
+        var timeAxis = document.getElementById('time-axis');
+        var bar = document.getElementById('bar');
         var download = document.getElementById('download');
         var requestId = 0;
+        var loadedSize = null;
 
         try {
             var saved = JSON.parse(localStorage.getItem('mdrm-spectrogram-options') || '{}');
@@ -204,14 +332,123 @@
             return p.split('/').map(encodeURIComponent).join('/');
         }
 
-        function imageSize() {
-            // ffmpeg adds ~280 px of axes/legend around the plot; aim for a sharp image at this width
-            var stage = document.querySelector('.stage');
-            var dpr = Math.min(window.devicePixelRatio || 1, 2);
-            var target = Math.round((stage.clientWidth * dpr - 280) / 200) * 200;
-            var w = Math.max(600, Math.min(3000, target));
-            return { w: w, h: Math.round(w / 2) };
+        function imageUrl(w, h, legend) {
+            return '/spectrogram-image/' + encodePath(filepath) +
+                '?w=' + w + '&h=' + h + '&fscale=' + options.fscale +
+                '&mode=' + options.mode + '&legend=' + (legend ? 1 : 0);
         }
+
+        // Plot size in device pixels (sharp on high-DPI screens), rounded so small
+        // size changes reuse the server's cached image
+        function plotSize() {
+            var dpr = Math.min(window.devicePixelRatio || 1, 2);
+            var round = function (v) { return Math.max(120, Math.round(v * dpr / 16) * 16); };
+            return { w: Math.min(3200, round(plot.clientWidth)), h: Math.min(2400, round(plot.clientHeight)) };
+        }
+
+        function panels() {
+            return options.mode === 'separate' ? Math.max(1, channelCount) : 1;
+        }
+
+        // ---- Axes (positions follow ffmpeg's showspectrum frequency mapping) ----
+
+        // Fraction of a channel panel's height, from the bottom, where frequency f is drawn
+        function freqFraction(f) {
+            if (options.fscale === 'log') {
+                // Rows are drawn at f = 20 * (nyquist / 20) ^ t + 20
+                if (f <= 40) return null;
+                return Math.log((f - 20) / 20) / Math.log(nyquist / 20);
+            }
+            return f / nyquist;
+        }
+
+        function formatHz(f) {
+            if (f === 0) return '0';
+            if (f >= 1000) return (f / 1000).toFixed(f % 1000 === 0 ? 0 : 1) + 'k';
+            return String(f);
+        }
+
+        function formatTime(t) {
+            var s = Math.round(t);
+            var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+            var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+            return h ? h + ':' + pad(m) + ':' + pad(sec) : m + ':' + pad(sec);
+        }
+
+        function addTick(parent, cls, text, prop, pct) {
+            var el = document.createElement('div');
+            el.className = cls;
+            el.textContent = text;
+            el.style[prop] = pct + '%';
+            parent.appendChild(el);
+        }
+
+        function frequencyTicks(panelHeight) {
+            var ticks = [];
+            if (options.fscale === 'log') {
+                var candidates = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 40000, 80000];
+                var lastPx = -Infinity;
+                candidates.forEach(function (f) {
+                    var t = freqFraction(f);
+                    if (t === null || t < 0 || t > 0.995) return;
+                    var px = t * panelHeight;
+                    if (px - lastPx >= 16) { ticks.push(f); lastPx = px; }
+                });
+            } else {
+                var steps = [500, 1000, 2000, 2500, 5000, 10000, 20000, 40000];
+                var maxTicks = Math.max(2, Math.floor(panelHeight / 26));
+                var step = steps.find(function (s) { return nyquist / s <= maxTicks; }) || 40000;
+                for (var f = 0; f <= nyquist * 0.98; f += step) ticks.push(f);
+            }
+            return ticks;
+        }
+
+        function drawAxes() {
+            var n = panels();
+            var panelHeight = plot.clientHeight / n;
+
+            freqAxis.innerHTML = '<div class="unit">Hz</div>';
+            overlay.innerHTML = '';
+            var ticks = frequencyTicks(panelHeight);
+            for (var p = 0; p < n; p++) {
+                ticks.forEach(function (f) {
+                    var t = freqFraction(f);
+                    addTick(freqAxis, 'tick', formatHz(f), 'top', ((p + 1 - t) / n) * 100);
+                });
+                if (n > 1) {
+                    if (p > 0) {
+                        var d = document.createElement('div');
+                        d.className = 'divider';
+                        d.style.top = (p / n * 100) + '%';
+                        overlay.appendChild(d);
+                    }
+                    var label = document.createElement('div');
+                    label.className = 'channel-name';
+                    label.textContent = n === 2 ? (p === 0 ? 'L' : 'R') : 'Ch ' + (p + 1);
+                    label.style.top = 'calc(' + (p / n * 100) + '% + 4px)';
+                    overlay.appendChild(label);
+                }
+            }
+
+            timeAxis.innerHTML = '';
+            if (duration > 0) {
+                var steps = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200];
+                var maxTicks = Math.max(2, Math.floor(plot.clientWidth / 64));
+                var step = steps.find(function (s) { return duration / s <= maxTicks; }) || 7200;
+                for (var t = 0; t <= duration + 0.001; t += step) {
+                    if (t > 0 && (duration - t) / duration < 0.04) break;
+                    addTick(timeAxis, 'tick', formatTime(t), 'left', (t / duration) * 100);
+                }
+            }
+
+            bar.innerHTML = '<div class="scale"></div><div class="unit">dB</div>';
+            var dbStep = plot.clientHeight < 220 ? 40 : 20;
+            for (var db = 0; db >= -120; db -= dbStep) {
+                addTick(bar, 'tick', String(db), 'top', (db / -120) * 100);
+            }
+        }
+
+        // ---- Image ----
 
         function syncButtons() {
             document.querySelectorAll('.segmented button').forEach(function (b) {
@@ -221,50 +458,71 @@
             });
         }
 
-        function showStatus(html, isError) {
-            status.innerHTML = html;
-            status.classList.toggle('error', !!isError);
+        function showError(message) {
+            var div = document.createElement('div');
+            div.textContent = message;
+            status.innerHTML = '';
+            status.appendChild(div);
+            status.classList.add('error');
             status.hidden = false;
         }
 
-        function load() {
-            if (!supported) return;
-            var id = ++requestId;
-            var size = imageSize();
-            var url = '/spectrogram-image/' + encodePath(filepath) +
-                '?w=' + size.w + '&h=' + size.h +
-                '&fscale=' + options.fscale + '&mode=' + options.mode;
-
-            showStatus('<div class="spinner"></div><div>Generating spectrogram…</div>', false);
-            download.setAttribute('aria-disabled', 'true');
-
-            fetch(url, { credentials: 'same-origin' }).then(function (res) {
+        function fetchPng(url) {
+            return fetch(url, { credentials: 'same-origin' }).then(function (res) {
                 if (!res.ok) {
                     return res.json().catch(function () { return {}; }).then(function (j) {
                         throw new Error(j.error || ('Error ' + res.status));
                     });
                 }
                 return res.blob();
-            }).then(function (blob) {
+            });
+        }
+
+        function load() {
+            drawAxes();
+            if (!supported) return;
+            var id = ++requestId;
+            var size = plotSize();
+            loadedSize = size;
+
+            status.innerHTML = '<div class="spinner"></div><div>Generating spectrogram…</div>';
+            status.classList.remove('error');
+            status.hidden = false;
+
+            fetchPng(imageUrl(size.w, size.h, false)).then(function (blob) {
                 if (id !== requestId) return;
                 var objectUrl = URL.createObjectURL(blob);
-                img.onload = function () { status.hidden = true; };
+                img.onload = function () {
+                    if (id === requestId) status.hidden = true;
+                };
                 if (img.dataset.url) URL.revokeObjectURL(img.dataset.url);
                 img.dataset.url = objectUrl;
                 img.src = objectUrl;
                 img.hidden = false;
-                download.href = objectUrl;
-                download.download = filepath.split('/').pop().replace(/\.[^.]+$/, '') + ' - spectrogram.png';
-                download.setAttribute('aria-disabled', 'false');
             }).catch(function (err) {
                 if (id !== requestId) return;
-                var div = document.createElement('div');
-                div.textContent = 'Could not generate the spectrogram: ' + err.message;
-                status.innerHTML = '';
-                status.appendChild(div);
-                status.classList.add('error');
-                status.hidden = false;
+                showError('Could not generate the spectrogram: ' + err.message);
             });
+        }
+
+        // Re-render when the available space changes noticeably (rotation, window resize)
+        var resizeTimer = null;
+        function onResize() {
+            drawAxes();
+            clearTimeout(resizeTimer);
+            resizeTimer = setTimeout(function () {
+                var size = plotSize();
+                if (!loadedSize ||
+                    Math.abs(size.w - loadedSize.w) / loadedSize.w > 0.08 ||
+                    Math.abs(size.h - loadedSize.h) / loadedSize.h > 0.08) {
+                    load();
+                }
+            }, 400);
+        }
+        if (window.ResizeObserver) {
+            new ResizeObserver(onResize).observe(plot);
+        } else {
+            window.addEventListener('resize', onResize);
         }
 
         document.querySelectorAll('.segmented button').forEach(function (b) {
@@ -274,6 +532,27 @@
                 try { localStorage.setItem('mdrm-spectrogram-options', JSON.stringify(options)); } catch (e) {}
                 syncButtons();
                 load();
+            });
+        });
+
+        // Download: full-size image with ffmpeg's own axes and colour scale
+        download.disabled = !supported;
+        download.addEventListener('click', function () {
+            var label = download.textContent;
+            download.disabled = true;
+            download.textContent = 'Preparing…';
+            fetchPng(imageUrl(1600, 800, true)).then(function (blob) {
+                var a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = filepath.split('/').pop().replace(/\.[^.]+$/, '') + ' - spectrogram.png';
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 10000);
+            }).catch(function (err) {
+                alert('Could not create the PNG: ' + err.message);
+            }).then(function () {
+                download.disabled = false;
+                download.textContent = label;
             });
         });
 

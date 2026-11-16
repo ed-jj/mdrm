@@ -1079,17 +1079,18 @@ def spectrogram_page(filepath):
 
 @app.route('/spectrogram-image/<path:filepath>')
 def spectrogram_image(filepath):
-    """Spectrogram PNG for a file. Query: w, h, fscale (lin|log), mode (combined|separate)"""
+    """Spectrogram PNG. Query: w, h (plot size), fscale (lin|log), mode (combined|separate), legend (1|0)"""
     try:
         file_path = validate_path(os.path.join(MUSIC_DIR, filepath))
         if not os.path.isfile(file_path):
             return jsonify({'error': 'File not found'}), 404
         if not spectrogram.is_supported():
             return jsonify({'error': 'Spectrograms need ffmpeg with the showspectrumpic filter'}), 501
-        width, height, fscale, mode = spectrogram.normalise_options(
+        width, height, fscale, mode, legend = spectrogram.normalise_options(
             request.args.get('w'), request.args.get('h'),
-            request.args.get('fscale'), request.args.get('mode'))
-        png = spectrogram.render(file_path, width, height, fscale, mode)
+            request.args.get('fscale'), request.args.get('mode'),
+            request.args.get('legend', '1'))
+        png = spectrogram.render(file_path, width, height, fscale, mode, legend)
         response = Response(png, mimetype='image/png')
         response.headers['Cache-Control'] = 'private, max-age=3600'
         return response
