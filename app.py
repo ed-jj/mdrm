@@ -70,7 +70,7 @@ from core.album_art.manager import (
     prepare_batch_album_art_change, record_batch_album_art_history
 )
 from core.batch.processor import process_folder_files
-from core import replaygain, spectrogram
+from core import replaygain, spectrogram, dynamic_range
 
 app = Flask(__name__)
 
@@ -1170,28 +1170,19 @@ def delete_art_from_folder():
         logger.error(f"Error deleting album art from folder: {e}")
         return jsonify({'error': str(e)}), 500
 
-def _run_replaygain_job(job, folder_path, audio_files):
-    """Background job: analyse all files as one album, then write the 4 ReplayGain tags"""
-    job['stage'] = 'analysing'
-    job['total'] = len(audio_files)
-
-    def on_progress(done, total):
-        job['progress'] = done
-
-    results, errors = replaygain.calculate_album(audio_files, on_progress)
-    if not results:
-        job['status'] = 'error'
-        job['message'] = 'Analysis failed for all files'
-        job['result'] = {'errors': errors}
-        return
-
+def _write_calculated_tags(job, folder_path, results, fields, errors, label):
+    """
+    Write calculated tag values ({filepath: {field: value}}) using the same
+    mechanism as user-created custom fields, with undoable history per field.
+    Returns the number of files written without errors.
+    """
     job['stage'] = 'writing'
     job['progress'] = 0
     job['total'] = len(results)
 
     # Per field: files where the tag already existed (updates) and new ones (creations)
-    updates = {field: [] for field in replaygain.RG_FIELDS}
-    creations = {field: {} for field in replaygain.RG_FIELDS}
+    updates = {field: [] for field in fields}
+    creations = {field: {} for field in fields}
     files_written = 0
 
     for file_path, values in results.items():
@@ -1200,7 +1191,7 @@ def _run_replaygain_job(job, folder_path, audio_files):
             discovered = mutagen_handler.discover_all_metadata(file_path)
             _, format_type = mutagen_handler.detect_format(file_path)
             file_ok = True
-            for field in replaygain.RG_FIELDS:
+            for field in fields:
                 new_value = values[field]
                 existing_id, old_value = mutagen_handler.find_panel_field(field, discovered, format_type)
 
@@ -1222,18 +1213,37 @@ def _run_replaygain_job(job, folder_path, audio_files):
             if file_ok:
                 files_written += 1
         except Exception as e:
-            logger.error(f"Error writing ReplayGain tags to {filename}: {e}")
+            logger.error(f"Error writing {label} tags to {filename}: {e}")
             errors.append(f"{filename}: {str(e)}")
         job['progress'] += 1
 
     # History (undoable per tag, like other batch field operations)
-    for field in replaygain.RG_FIELDS:
+    for field in fields:
         if updates[field]:
             history.add_action(create_batch_metadata_action(
                 folder_path, field, '(recalculated)', updates[field]))
         if creations[field]:
             history.add_action(create_batch_field_creation_action(
                 list(creations[field].keys()), field, creations[field]))
+
+    return files_written
+
+def _run_replaygain_job(job, folder_path, audio_files):
+    """Background job: analyse all files as one album, then write the 4 ReplayGain tags"""
+    job['stage'] = 'analysing'
+    job['total'] = len(audio_files)
+
+    def on_progress(done, total):
+        job['progress'] = done
+
+    results, errors = replaygain.calculate_album(audio_files, on_progress)
+    if not results:
+        job['status'] = 'error'
+        job['message'] = 'Analysis failed for all files'
+        job['result'] = {'errors': errors}
+        return
+
+    files_written = _write_calculated_tags(job, folder_path, results, replaygain.RG_FIELDS, errors, 'ReplayGain')
 
     any_result = next(iter(results.values()))
     job['result'] = {
@@ -1244,6 +1254,105 @@ def _run_replaygain_job(job, folder_path, audio_files):
         'errors': errors
     }
     job['status'] = 'done'
+
+def _run_dynamic_range_job(job, folder_path, abs_folder_path, audio_files):
+    """Background job: measure DR of every file (one album), write tags and foo_dr.txt"""
+    job['stage'] = 'analysing'
+    job['total'] = len(audio_files)
+    job['progress'] = 0
+    errors = []
+    measured = []
+    lock = threading.Lock()
+
+    def work(file_path):
+        try:
+            result = dynamic_range.analyze_file(file_path)
+            with lock:
+                measured.append((file_path, result))
+        except Exception as e:
+            logger.error(f"DR analysis failed for {file_path}: {e}")
+            with lock:
+                errors.append(f"{os.path.basename(file_path)}: {e}")
+        finally:
+            with lock:
+                job['progress'] += 1
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=max(1, min(4, os.cpu_count() or 1))) as pool:
+        list(pool.map(work, audio_files))
+
+    if not measured:
+        job['status'] = 'error'
+        job['message'] = 'Analysis failed for all files'
+        job['result'] = {'errors': errors}
+        return
+
+    measured.sort(key=dynamic_range.sort_key)
+    album_value = dynamic_range.album_dr([r for _, r in measured])
+    tag_values = {
+        file_path: {dynamic_range.TAG_TRACK: str(r['dr_rounded']),
+                    dynamic_range.TAG_ALBUM: str(album_value)}
+        for file_path, r in measured
+    }
+    files_written = _write_calculated_tags(
+        job, folder_path, tag_values, (dynamic_range.TAG_TRACK, dynamic_range.TAG_ALBUM), errors, 'DR')
+
+    # foo_dr.txt in the album folder, like foo_dynamic_range
+    log_written = False
+    try:
+        log_path = os.path.join(abs_folder_path, dynamic_range.LOG_FILENAME)
+        with open(log_path, 'w', encoding='utf-8') as f:
+            f.write(dynamic_range.build_log(measured))
+        fix_file_ownership(log_path)
+        log_written = True
+    except Exception as e:
+        logger.error(f"Could not write {dynamic_range.LOG_FILENAME}: {e}")
+        errors.append(f"{dynamic_range.LOG_FILENAME}: {e}")
+
+    job['result'] = {
+        'filesUpdated': files_written,
+        'filesTotal': len(audio_files),
+        'albumDR': album_value,
+        'tracks': [{'file': os.path.basename(p), 'dr': r['dr_rounded']} for p, r in measured],
+        'logWritten': log_written,
+        'errors': errors
+    }
+    job['status'] = 'done'
+
+@app.route('/dynamic-range', methods=['POST'])
+def start_dynamic_range():
+    """Start DR measurement for all audio files in a folder (treated as one album)"""
+    data = request.json or {}
+    folder_path = data.get('folderPath', '')
+
+    try:
+        abs_folder_path = validate_path(os.path.join(MUSIC_DIR, folder_path) if folder_path else MUSIC_DIR)
+        if not os.path.isdir(abs_folder_path):
+            return jsonify({'error': 'Folder not found'}), 404
+
+        audio_files = list_folder_audio_files(abs_folder_path)
+        if not audio_files:
+            return jsonify({'error': 'No audio files found in folder'}), 404
+
+        if replaygain.is_running():
+            return jsonify({'error': 'Another calculation is already running'}), 409
+
+        job_id = replaygain.start_job(_run_dynamic_range_job, folder_path, abs_folder_path, audio_files)
+        return jsonify({'status': 'started', 'jobId': job_id, 'total': len(audio_files)})
+
+    except ValueError:
+        return jsonify({'error': 'Invalid path'}), 403
+    except Exception as e:
+        logger.error(f"Error starting DR calculation: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/dynamic-range/<job_id>')
+def dynamic_range_status(job_id):
+    """Get progress / result of a DR job"""
+    job = replaygain.get_job(job_id)
+    if not job:
+        return jsonify({'error': 'Job not found'}), 404
+    return jsonify(job)
 
 @app.route('/replaygain', methods=['POST'])
 def start_replaygain():
@@ -1261,7 +1370,7 @@ def start_replaygain():
             return jsonify({'error': 'No audio files found in folder'}), 404
 
         if replaygain.is_running():
-            return jsonify({'error': 'A ReplayGain calculation is already running'}), 409
+            return jsonify({'error': 'Another calculation is already running'}), 409
 
         job_id = replaygain.start_job(_run_replaygain_job, folder_path, audio_files)
         return jsonify({'status': 'started', 'jobId': job_id, 'total': len(audio_files)})

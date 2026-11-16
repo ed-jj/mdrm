@@ -156,6 +156,11 @@
                             <span class="btn-status-content">Calculate ReplayGain (folder)</span>
                             <span class="btn-status-message"></span>
                         </button>
+                        <button type="button" class="dr-btn btn-status" onclick="window.MetadataRemote.Metadata.DynamicRange.run()"
+                                title="Measure the dynamic range (DR, like foobar2000's foo_dynamic_range) of all files in this folder, write the DYNAMIC RANGE / ALBUM DYNAMIC RANGE tags and save foo_dr.txt">
+                            <span class="btn-status-content">Calculate DR (folder)</span>
+                            <span class="btn-status-message"></span>
+                        </button>
                         <button type="button" class="spectrogram-btn" style="display: none;" onclick="window.MetadataRemote.Metadata.Spectrogram.open()"
                                 title="Open the spectrogram of this file in a new tab">Spectrogram</button>
                         <span class="replaygain-status" id="replaygain-status" aria-live="polite"></span>
@@ -512,6 +517,7 @@
     <script src="{{ url_for('static', filename='js/metadata/field-edit-modal.js') }}"></script>
     <script src="{{ url_for('static', filename='js/metadata/replaygain.js') }}"></script>
     <script src="{{ url_for('static', filename='js/metadata/spectrogram.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/metadata/dynamic-range.js') }}"></script>
 
     <!-- Previous / next file and mobile layout -->
     <script src="{{ url_for('static', filename='js/files/file-navigation.js') }}"></script>

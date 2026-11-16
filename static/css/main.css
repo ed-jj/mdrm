@@ -4052,13 +4052,34 @@ button:focus:not(:active):not(.processing):not(.success):not(.error):not(.warnin
     white-space: nowrap;
 }
 
-.replaygain-btn:hover:not(:disabled):not(.processing):not(.success):not(.error):not(.warning) {
+.replaygain-btn:hover:not(:disabled):not(.processing):not(.success):not(.error):not(.warning),
+.dr-btn:hover:not(:disabled):not(.processing):not(.success):not(.error):not(.warning) {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(58, 74, 106, 0.4);
 }
 
-.replaygain-btn:disabled {
+.replaygain-btn:disabled,
+.dr-btn:disabled {
     cursor: wait;
+}
+
+.dr-btn {
+    padding: 0.4rem 0.8rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-weight: 500;
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #4a3a6a 0%, #5a4a7a 100%);
+    color: white;
+    white-space: nowrap;
+}
+
+:root[data-theme="light"] .dr-btn {
+    background: linear-gradient(135deg, #7d6b8b 0%, #6d5b7b 100%);
+    color: white;
 }
 
 .spectrogram-btn {
@@ -4106,7 +4127,8 @@ button:focus:not(:active):not(.processing):not(.success):not(.error):not(.warnin
 
 /* "Click again to confirm" state for the folder-wide buttons */
 .delete-art-folder-btn.confirming,
-.replaygain-btn.confirming {
+.replaygain-btn.confirming,
+.dr-btn.confirming {
     background: linear-gradient(135deg, #a33a3a 0%, #c04545 100%);
     color: white;
 }
@@ -4127,7 +4149,8 @@ button:focus:not(:active):not(.processing):not(.success):not(.error):not(.warnin
 }
 
 :root[data-theme="light"] .delete-art-folder-btn.confirming,
-:root[data-theme="light"] .replaygain-btn.confirming {
+:root[data-theme="light"] .replaygain-btn.confirming,
+:root[data-theme="light"] .dr-btn.confirming {
     background: linear-gradient(135deg, #e05050 0%, #d04040 100%);
 }
 
@@ -4474,6 +4497,7 @@ button:focus:not(:active):not(.processing):not(.success):not(.error):not(.warnin
     }
     
     .replaygain-btn,
+    .dr-btn,
     .spectrogram-btn {
         width: 100%;
         padding: 0.6rem 0.8rem;
