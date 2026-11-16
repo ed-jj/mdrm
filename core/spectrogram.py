@@ -29,8 +29,8 @@ from config import logger
 
 FREQUENCY_SCALES = ('lin', 'log')
 CHANNEL_MODES = ('combined', 'separate')
-MIN_WIDTH, MAX_WIDTH = 600, 3000
-MIN_HEIGHT, MAX_HEIGHT = 300, 1600
+MIN_WIDTH, MAX_WIDTH = 120, 3200
+MIN_HEIGHT, MAX_HEIGHT = 120, 2400
 CACHE_MAX_FILES = 40
 FFMPEG_TIMEOUT = 110  # stay under gunicorn's 120 s worker timeout
 
@@ -61,13 +61,18 @@ def _clamp(value, low, high, default):
         return default
 
 
-def normalise_options(width=None, height=None, fscale=None, mode=None):
-    """Validate request options, falling back to defaults."""
+def normalise_options(width=None, height=None, fscale=None, mode=None, legend=None):
+    """
+    Validate request options, falling back to defaults.
+    width/height are the size of the plot area; with legend=True ffmpeg adds
+    its own axes and colour scale around it (about 280 x 130 px extra).
+    """
     width = _clamp(width, MIN_WIDTH, MAX_WIDTH, 1600)
     height = _clamp(height, MIN_HEIGHT, MAX_HEIGHT, width // 2)
     fscale = fscale if fscale in FREQUENCY_SCALES else 'lin'
     mode = mode if mode in CHANNEL_MODES else 'combined'
-    return width, height, fscale, mode
+    legend = str(legend).lower() not in ('0', 'false', 'no')
+    return width, height, fscale, mode, legend
 
 
 def _cache_dir():
@@ -76,9 +81,9 @@ def _cache_dir():
     return path
 
 
-def _cache_key(filepath, width, height, fscale, mode):
+def _cache_key(filepath, width, height, fscale, mode, legend):
     stat = os.stat(filepath)
-    raw = f"{filepath}|{stat.st_mtime_ns}|{stat.st_size}|{width}x{height}|{fscale}|{mode}"
+    raw = f"{filepath}|{stat.st_mtime_ns}|{stat.st_size}|{width}x{height}|{fscale}|{mode}|{int(legend)}"
     return hashlib.sha1(raw.encode('utf-8', 'surrogateescape')).hexdigest()
 
 
@@ -92,19 +97,19 @@ def _prune_cache(directory):
         pass
 
 
-def render(filepath, width, height, fscale, mode):
+def render(filepath, width, height, fscale, mode, legend=True):
     """
     Return the spectrogram PNG for a file (bytes), rendering it with ffmpeg if
     it isn't cached yet. Raises RuntimeError if ffmpeg fails.
     """
     directory = _cache_dir()
-    cached = os.path.join(directory, _cache_key(filepath, width, height, fscale, mode) + '.png')
+    cached = os.path.join(directory, _cache_key(filepath, width, height, fscale, mode, legend) + '.png')
     if os.path.exists(cached):
         os.utime(cached, None)  # keep recently used images in the cache
         with open(cached, 'rb') as f:
             return f.read()
 
-    spectrum = (f"showspectrumpic=s={width}x{height}:legend=1:mode={mode}"
+    spectrum = (f"showspectrumpic=s={width}x{height}:legend={int(legend)}:mode={mode}"
                 f":color=intensity:scale=log:fscale={fscale}:win_func=hann")
     cmd = [
         'ffmpeg', '-nostdin', '-hide_banner', '-loglevel', 'error',
@@ -145,14 +150,17 @@ def audio_info(filepath):
             info['codec'] = type(audio).__name__.replace('Ogg', '').upper()
             if getattr(i, 'sample_rate', None):
                 info['sample_rate'] = f"{i.sample_rate / 1000:g} kHz"
+                info['sample_rate_hz'] = int(i.sample_rate)
             bits = getattr(i, 'bits_per_sample', None)
             if bits:
                 info['bit_depth'] = f"{bits}-bit"
             if getattr(i, 'channels', None):
                 info['channels'] = {1: 'mono', 2: 'stereo'}.get(i.channels, f"{i.channels} channels")
+                info['channel_count'] = int(i.channels)
             if getattr(i, 'bitrate', None):
                 info['bitrate'] = f"{round(i.bitrate / 1000)} kbps"
             if getattr(i, 'length', None):
+                info['duration_seconds'] = float(i.length)
                 total = int(round(i.length))
                 info['duration'] = f"{total // 60}:{total % 60:02d}"
     except Exception as e:
